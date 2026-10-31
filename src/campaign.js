@@ -64,7 +64,7 @@ export async function prepare({ models, budgetMinutes = PROTOCOL.budgetMinutes, 
   if (models?.length && chosen.length < models.length) throw new Error(`modèle inconnu parmi : ${models.join(', ')}`);
   if (reference) {
     const past = (await listCampaigns()).find((c) => c.fingerprint.machine.chip === machine.chip);
-    const ref = installed.find((m) => m.id.startsWith(PROTOCOL.referenceModel));
+    const ref = [...installed].sort((a, b) => a.size - b.size).find((m) => m.id.startsWith(PROTOCOL.referenceModel ?? ''));
     if (past && past.fingerprint.poney.commit !== poney.commit && ref && !chosen.includes(ref)) chosen.push(ref);
   }
   const tasks = selectTasks({ categories, ids });
@@ -96,6 +96,13 @@ export async function runCampaign(campaign, { log = console.log, signal } = {}) 
   const issues = await machineIssues();
   if (issues.length) throw new Error(`machine occupée : ${issues.map((i) => i.text).join(' ')}`);
 
+  // (results keep no paths: a resumed campaign finds its files again)
+  const installed = await poneyModels();
+  for (const m of campaign.models) {
+    const found = installed.find((x) => x.id === m.id);
+    if (!found) throw new Error(`modèle introuvable : ${m.id}`);
+    m.file = found.file;
+  }
   const previous = await loadCampaign(campaign.id).catch(() => ({ trials: [], probes: [] }));
   const records = [...previous.probes, ...previous.trials];
   campaign.status = 'running';

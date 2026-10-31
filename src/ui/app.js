@@ -24,7 +24,7 @@ const percent = (x) => (x == null ? '—' : `${Math.round(x * 100)} %`);
 const seconds = (ms) => (ms == null ? '—' : ms < 60000 ? `${Math.round(ms / 1000)} s` : `${(ms / 60000).toFixed(1).replace('.', ',')} min`);
 const gigas = (mb) => (mb == null ? '—' : `${(mb / 1024).toFixed(1).replace('.', ',')} Go`);
 const duration = (m) => (m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? ` ${String(m % 60).padStart(2, '0')}` : ''}`);
-const short = (id) => id.replace(/-it-heretic-qat-ud-q4_k_xl|-a4b-it-uncensored-heretic\.i1-iq3_m|-a3b-uncensored-heretic-q3_k_m/, '');
+const short = (id) => id.replace(/-(it|a\d+b)-.*$/, '');
 
 const state = { overview: null, view: 'launch', selected: null };
 

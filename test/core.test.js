@@ -7,6 +7,8 @@ import { profile } from '../src/sandbox.js';
 import { compare, gate, rank, summarize } from '../src/score.js';
 import { missingTools } from '../src/trial.js';
 import { search } from '../src/fakeweb.js';
+import { publicJson } from '../src/store.js';
+import os from 'node:os';
 import { filler, finalValue } from '../suite/lib/helpers.js';
 
 const task = (id, category, tier) => ({ id, category, tier, version: 1 });
@@ -166,6 +168,12 @@ describe('the assessment', () => {
 });
 
 describe('small parts', () => {
+  test('results keep no path of this machine', () => {
+    const text = publicJson({ models: [{ id: 'm', file: '/x/m.gguf' }], reason: `boom in ${os.homedir()}/a` });
+    expect(text).not.toContain('m.gguf');
+    expect(text).not.toContain(os.homedir());
+    expect(text).toContain('~/a');
+  });
   test('the final value of an answer', () => {
     expect(finalValue('blah\nANSWER: **42**')).toBe('42');
     expect(finalValue('answer: 1\nRéponse : 2')).toBe('2');

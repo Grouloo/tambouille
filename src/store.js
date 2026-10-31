@@ -2,8 +2,12 @@
 // trials.jsonl, one line per finished trial, which is also how it resumes.
 // Transcripts stay in .data: heavy, and private.
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { DATA, RESULTS } from './config.js';
+
+/** Results are published: no paths of this machine in them, even in an error message. */
+export const publicJson = (value, space) => JSON.stringify(value, (key, v) => (key === 'file' ? undefined : v), space).replaceAll(os.homedir(), '~');
 
 const dir = (id) => path.join(RESULTS, id);
 
@@ -11,16 +15,16 @@ export const newCampaignId = (d = new Date()) => d.toISOString().slice(0, 16).re
 
 export async function saveCampaign(campaign) {
   await fs.mkdir(dir(campaign.id), { recursive: true });
-  await fs.writeFile(path.join(dir(campaign.id), 'campaign.json'), `${JSON.stringify(campaign, null, 2)}\n`);
+  await fs.writeFile(path.join(dir(campaign.id), 'campaign.json'), `${publicJson(campaign, 2)}\n`);
 }
 
 export async function appendRecord(id, record) {
-  await fs.appendFile(path.join(dir(id), 'trials.jsonl'), `${JSON.stringify(record)}\n`);
+  await fs.appendFile(path.join(dir(id), 'trials.jsonl'), `${publicJson(record)}\n`);
 }
 
 /** Rewrites the trials: a late judgement replaces the line of its trial. */
 export async function saveRecords(id, records) {
-  await fs.writeFile(path.join(dir(id), 'trials.jsonl'), records.map((r) => `${JSON.stringify(r)}\n`).join(''));
+  await fs.writeFile(path.join(dir(id), 'trials.jsonl'), records.map((r) => `${publicJson(r)}\n`).join(''));
 }
 
 export async function loadCampaign(id) {

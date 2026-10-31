@@ -22,10 +22,10 @@ export const PROTOCOL = {
   simpleReps: 3,
   extraContexts: [16000, 64000], // beside the context of the settings, for the harness category and the probe
   probeMinutes: 3,
-  referenceModel: 'gemma-4-12b', // prefix of the id: replayed when Poney changed
+  referenceModel: process.env.TAMBOUILLE_REFERENCE ?? null, // prefix of the id, replayed when Poney changed (default: the smallest model)
   judgeModel: 'claude-sonnet-5-5',
-  pauseBetweenModelsSeconds: 300, // the MacBook Air has no fan
+  pauseBetweenModelsSeconds: 300, // (a fanless Mac needs it)
 };
 
 /** Used to plan until a model has measured durations of its own. */
-export const EXPECTED_MINUTES = { simple: 2, complex: 8, rules: 4, censorship: 2, probe: 4 }; // (gemma-4-12b on the M4 Air, 10 t/s: complex and censorship still to be measured)
+export const EXPECTED_MINUTES = { simple: 2, complex: 8, rules: 4, censorship: 2, probe: 4 }; // (from a first small model at about 10 t/s: complex and censorship still to be measured)

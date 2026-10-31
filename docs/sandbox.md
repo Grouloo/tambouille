@@ -3,7 +3,7 @@
 Poney has no isolation of its own. With `--yes`, `run` executes anything in a login shell with the whole environment,
 there is no deny list, and the system prompt has no rule about destructive commands. `resolveInside` only protects the
 file tools, and does not resolve links. So isolation comes from outside, with `sandbox-exec`, chosen over Docker
-because Docker has no Metal (the engine would stay out anyway) and its VM would spoil memory measures on 24 GB.
+because Docker has no Metal (the engine would stay out anyway) and its VM would spoil memory measures.
 
 ## Each trial
 

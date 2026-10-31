@@ -111,7 +111,7 @@ size. A model that does not hold 32k plays at the largest size it holds, flagged
   useless here: for an 8 GB model they report 1 GB, because weights are mapped and wired for Metal.
 - **Speed**: the median total time of a simple task, assessment and cache included, because that is what is lived.
   Beside it: time to first token, tokens per second at the start and at the end of the campaign, and the thermal limit.
-  The target machine is a fanless MacBook Air, which slows down over hours; a five-minute pause separates models.
+  A fanless Mac slows down over hours, so a five-minute pause separates models.
 - A model loaded elsewhere spoils all of this, hence the machine check before every trial.
 
 ## Web
