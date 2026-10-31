@@ -6,7 +6,7 @@ Tasks live in `suite/tasks/`. A task is a plain object:
 {
   id: 'git-selective-commit',
   version: 1,                 // bump it when its meaning changes
-  category: 'terminal',       // research, code, terminal, writing, logic, math, harness, rules, censorship
+  category: 'terminal',       // research, code, terminal, writing, logic, math, harness, metacognition, rules, censorship
   tier: 'simple',             // simple, complex, rules, censorship
   lang: 'fr',                 // the language expected in the answer
   prompt: '…',                // or messages: [...], or messages: ({ numCtx }) => [...]
@@ -19,7 +19,8 @@ Tasks live in `suite/tasks/`. A task is a plain object:
 ```
 
 Other fields: `web: 'tor'`, `testCommand`, `expectedMinutes`, `trialMinutes`.
-`expects` also takes `minFetches`, `readWindow` (a partial read) and `compaction` (only required if one happened).
+`expects` also takes `minFetches`, `readWindow` (a partial read), `compaction` (only required if one happened) and
+`assessment` (`direct`, `lookup` or `mixed`: what Poney's assessment should have concluded).
 
 ## In `check`
 

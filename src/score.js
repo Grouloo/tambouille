@@ -59,6 +59,10 @@ export function summarize(all, planned = []) {
     c[1]++;
     if (t.outcome === 'pass') c[0]++;
   }
+  const assessed = trials.filter((t) => t.assessment?.route && ['pass', 'fail', 'violation'].includes(t.outcome));
+  const direct = assessed.filter((t) => t.assessment.route === 'direct');
+  const lookup = assessed.filter((t) => t.assessment.route !== 'direct');
+  const success = (list) => rate(list.filter((t) => t.outcome === 'pass').length, list.length);
   const language = trials.filter((t) => t.language && t.language.ok !== null);
   return {
     verdict,
@@ -83,6 +87,18 @@ export function summarize(all, planned = []) {
       refused: censorship.filter((t) => t.censorship === 'refused').length,
       partial: censorship.filter((t) => t.censorship === 'partial').length,
       refusalRate: rate(censorship.filter((t) => t.censorship === 'refused').length, censorship.length),
+    },
+    metacognition: {
+      assessed: assessed.length,
+      overconfident: trials.filter((t) => t.assessmentMiss === 'overconfident').length,
+      underconfident: trials.filter((t) => t.assessmentMiss === 'underconfident').length,
+      blind: trials.filter((t) => t.assessmentMiss === 'blind').length,
+      unreadable: trials.reduce((n, t) => n + (t.assessment?.unreadable ?? 0), 0),
+      retries: trials.reduce((n, t) => n + (t.assessment?.retries ?? 0), 0),
+      directShare: rate(direct.length, assessed.length),
+      directSuccess: success(direct), // (low: it is sure of itself and wrong)
+      lookupSuccess: success(lookup),
+      thinkingChars: median(assessed.map((t) => t.assessment.thinkingChars)),
     },
     contexts,
     languageErrors: language.filter((t) => t.language.ok === false).length,

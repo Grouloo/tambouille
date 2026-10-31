@@ -55,6 +55,8 @@ async function report(id) {
     console.log(`${i + 1}. ${m.model} @${m.mainCtx ?? '—'}  ${s.verdict}${s.missing ? ` (${s.missing} essais manquants)` : ''}`);
     console.log(`   simples ${percent(s.simpleRate)}  complexes ${percent(s.complexRate)}  outils mal utilisés ${percent(s.tools.misuseRate)}  refus ${percent(s.censorship.refusalRate)}`);
     console.log(`   temps médian ${s.speed.medianSimpleMs ? `${Math.round(s.speed.medianSimpleMs / 1000)} s` : '—'}  ${s.speed.tps ?? '—'} t/s  mémoire ${s.memoryPeakMb ? `${(s.memoryPeakMb / 1024).toFixed(1)} Go` : '—'}`);
+    const c = s.metacognition;
+    console.log(`   bilan : ${c.overconfident} sûr à tort, ${c.underconfident + c.blind} doute à tort, ${c.unreadable} illisibles ; réussite ${percent(c.directSuccess)} si direct, ${percent(c.lookupSuccess)} si vérifié`);
     for (const r of s.reasons) console.log(`   ✗ ${r}`);
   }
 }

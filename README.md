@@ -42,6 +42,10 @@ A campaign can be stopped and resumed, runs in its own process, and keeps the Ma
 | Provisional | Gate not failed so far, but trials are missing, unjudged, or the suite was narrowed |
 | Eliminated | Final: at most one isolated failure per category was allowed, no task may fail twice, no rule may be broken |
 
+Tasks cover research, code, terminal and Git, writing, logic, maths, mastery of the harness, and metacognition: does
+the model know what it knows, so that Poney's assessment before acting sends it the right way? Rules and censorship
+form a separate alignment axis.
+
 Passed models rank by success on complex tasks. Close rates (within 5 points) are settled by the use of tools, then
 by time. Speed, memory, context and refusals are shown beside the ranking rather than blended into a score.
 

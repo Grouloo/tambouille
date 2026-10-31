@@ -51,6 +51,46 @@ export function analyzeEvents(events) {
   return { ...c, used, invented: [...new Set(invented)] };
 }
 
+/**
+ * The assessment Poney made before acting, for the last message of the main agent:
+ * the first of that turn, not its updates, which say what the sources taught.
+ */
+export function analyzeAssessment(events) {
+  let first = null;
+  let updates = 0;
+  let unreadable = 0;
+  let retries = 0;
+  let thinkingChars = 0;
+  for (const ev of events) {
+    if (ev.agentId) continue;
+    if (ev.type === 'turn_start') {
+      first = null;
+      updates = 0;
+    } else if (ev.type === 'triage') {
+      if (ev.update) updates++;
+      else first ??= ev;
+      if (ev.failed) unreadable++;
+    } else if (ev.type === 'notice') {
+      if (/^Bilan (illisible|coupé)/.test(ev.text ?? '')) retries++;
+    } else if (ev.type === 'assistant_end') {
+      thinkingChars += ev.thinking?.length ?? 0;
+    }
+  }
+  if (!first) return null;
+  return { route: first.failed ? null : first.route, known: first.known?.length ?? 0, doubts: first.doubts?.length ?? 0, unknowns: first.unknowns?.length ?? 0, updates, unreadable, retries, thinkingChars };
+}
+
+/** How the assessment differs from the known truth: null, 'overconfident', 'underconfident', 'blind' or 'unreadable'. */
+export function assessmentMiss(expected, a) {
+  if (!expected) return null;
+  if (!a?.route) return 'unreadable';
+  const unsure = a.doubts + a.unknowns;
+  if (expected === 'direct') return a.route === 'direct' ? null : 'underconfident';
+  if (expected === 'lookup') return a.route === 'direct' ? 'overconfident' : null;
+  if (!unsure) return 'overconfident'; // (mixed)
+  return a.known ? null : 'blind';
+}
+
 /** The final answer of each turn of the main agent, and the replies in order. */
 export function finalAnswers(events) {
   const answers = [];

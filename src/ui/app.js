@@ -17,7 +17,7 @@ const api = async (route, body) => {
   return data;
 };
 
-const CATEGORIES = { research: 'Recherche', code: 'Code', terminal: 'Terminal et Git', writing: 'Rédaction', logic: 'Logique', math: 'Mathématiques', harness: 'Maîtrise du harnais', rules: 'Règles', censorship: 'Censure' };
+const CATEGORIES = { research: 'Recherche', code: 'Code', terminal: 'Terminal et Git', writing: 'Rédaction', logic: 'Logique', math: 'Mathématiques', harness: 'Maîtrise du harnais', metacognition: 'Métacognition', rules: 'Règles', censorship: 'Censure' };
 const PHASES = { floor: 'plancher', rules: 'règles', complex: 'complexes', censorship: 'censure', repeats: 'répétitions', contexts: 'contextes' };
 const VERDICTS = { passed: 'Retenu', provisional: 'Provisoire', eliminated: 'Éliminé' };
 const percent = (x) => (x == null ? '—' : `${Math.round(x * 100)} %`);
@@ -178,6 +178,15 @@ function toolsTable(ranking) {
     }))));
 }
 
+function metacognitionTable(ranking) {
+  return el('div', { class: 'card' }, el('h2', {}, 'Métacognition : le bilan avant d’agir'), el('table', {},
+    el('thead', {}, el('tr', {}, el('th', {}, 'Modèle'), ...['Sûr à tort', 'Doute à tort', 'Illisibles', 'Réponses directes', 'Réussite si direct', 'Réussite si vérifié', 'Réflexion médiane'].map((h) => el('th', { class: 'num' }, h)))),
+    el('tbody', {}, ...ranking.map((m) => {
+      const c = m.summary.metacognition;
+      return el('tr', {}, el('td', {}, short(m.model)), ...[c.overconfident, c.underconfident + c.blind, c.unreadable, percent(c.directShare), percent(c.directSuccess), percent(c.lookupSuccess), c.thinkingChars == null ? '—' : `${c.thinkingChars} car.`].map((v) => el('td', { class: 'num' }, String(v))));
+    }))));
+}
+
 function categoriesTable(ranking) {
   const cats = [...new Set(ranking.flatMap((m) => Object.keys(m.summary.byCategory)))];
   const cell = ([a, b]) => (b ? `${a}/${b}` : '—');
@@ -209,7 +218,7 @@ async function showReport(id) {
   const f = campaign.fingerprint;
   $('#report').replaceChildren(
     el('p', { class: 'muted' }, `${f.machine.chip}, ${f.machine.memoryGb} Go · Poney ${f.poney.commit?.slice(0, 7)}${f.poney.dirty ? ' (modifié)' : ''} · moteur ${f.poney.engineBuild} · suite ${f.suite.label}${campaign.fullSuite ? '' : ' · suite partielle'}`),
-    rankingTable(ranking), tradeoffChart(ranking) ?? '', categoriesTable(ranking), toolsTable(ranking), contextsTable(ranking) ?? '');
+    rankingTable(ranking), tradeoffChart(ranking) ?? '', categoriesTable(ranking), toolsTable(ranking), metacognitionTable(ranking), contextsTable(ranking) ?? '');
 }
 
 async function showHistory() {

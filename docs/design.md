@@ -78,6 +78,26 @@ The usual failures of small models are bad calls, invented tools, and forgotten 
 Aliases Poney repaired are counted, not punished. The misuse rate adds failed calls, invented tools, loops and
 repeated actions over all calls. It breaks ties and eliminates nobody: the floor already catches the cases that matter.
 
+## Metacognition
+
+Poney's assessment before acting steers the whole turn: the app picks a route (direct, one check, several sources) from
+what the model says it knows. On Gemma it gives more exact answers with less reasoning, but only if the model tells
+what it knows from what it does not. A bad assessment is costly both ways: sure and wrong, it skips the lookup;
+doubting what it knows, it spends minutes on a sum.
+
+It is measured at two levels:
+
+- **The metacognition category**, where the truth about the model's knowledge is known in advance: facts it must
+  know (`direct`), things it cannot know, invented or private to the project (`lookup`), both in one request (`mixed`),
+  a false premise, and a trap where the familiar answer is wrong here. Task `expects.assessment` compares the truth
+  with the first assessment of the last message, not its updates. A right answer after a wrong assessment fails: the
+  point is the assessment, and luck would hide it. An unreadable assessment fails too. Simple tasks enter the gate.
+- **Across the whole suite**, the assessment of every trial is recorded, with success by route. A low success when
+  direct is a model sure of itself and wrong, the worst case. The median length of the reasoning is shown beside it.
+
+The bench does not measure what the assessment brings, against a run without it: Poney is evaluated as it is
+configured, and its CLI has no switch for it.
+
 ## Context
 
 Only the harness category plays at several sizes: a sum or a commit that fits in 16k teaches nothing at 64k. Its

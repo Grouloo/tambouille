@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { analyzeEvents, detectLanguage, finalAnswers, inventedTools, sumStats } from '../src/analyze.js';
+import { analyzeAssessment, analyzeEvents, assessmentMiss, detectLanguage, finalAnswers, inventedTools, sumStats } from '../src/analyze.js';
 import { parseVerdict, judgePrompt } from '../src/judge.js';
 import { fitBudget, planTrials, trialKey } from '../src/plan.js';
 import { trialSettings } from '../src/poney.js';
@@ -129,6 +129,39 @@ describe('analysis of a run', () => {
     expect(missingTools({ tools: [['recall', 'remember'], ['read']] }, { used: { remember: 1 } }, [])).toEqual(['read']);
     expect(missingTools({ minFetches: 2 }, { used: { fetch: 1 } }, [])).toEqual(['2 fetch']);
     expect(missingTools({ readWindow: true }, { used: {} }, [{ type: 'action_start', tool: 'read', args: { start: 5 } }])).toEqual([]);
+  });
+});
+
+describe('the assessment', () => {
+  const triage = (route, extra = {}) => ({ type: 'triage', route, known: [{}], doubts: [], unknowns: [], ...extra });
+  test('keeps the first assessment of the last message, not its updates or a sub-agent', () => {
+    const a = analyzeAssessment([
+      { type: 'turn_start' }, triage('investigate'), { type: 'turn_end' },
+      { type: 'turn_start' }, triage('check', { agentId: 1 }), triage('direct'), triage('investigate', { update: true }),
+      { type: 'assistant_end', thinking: 'abcd' }, { type: 'notice', text: 'Bilan coupé pendant la réflexion du modèle : nouvel essai (2/3).' },
+    ]);
+    expect(a).toMatchObject({ route: 'direct', updates: 1, retries: 1, thinkingChars: 4 });
+  });
+  test('an assessment that could not be read has no route', () => {
+    expect(analyzeAssessment([triage('check', { failed: true })])).toMatchObject({ route: null, unreadable: 1 });
+    expect(analyzeAssessment([])).toBeNull();
+  });
+  test('tells over-confidence from under-confidence', () => {
+    const a = (route, known, unsure) => ({ route, known, doubts: unsure, unknowns: 0 });
+    expect(assessmentMiss('lookup', a('direct', 2, 0))).toBe('overconfident');
+    expect(assessmentMiss('lookup', a('check', 0, 1))).toBeNull();
+    expect(assessmentMiss('direct', a('check', 1, 1))).toBe('underconfident');
+    expect(assessmentMiss('direct', a('direct', 1, 0))).toBeNull();
+    expect(assessmentMiss('mixed', a('direct', 2, 0))).toBe('overconfident');
+    expect(assessmentMiss('mixed', a('investigate', 0, 2))).toBe('blind');
+    expect(assessmentMiss('mixed', a('check', 1, 1))).toBeNull();
+    expect(assessmentMiss('lookup', null)).toBe('unreadable');
+    expect(assessmentMiss(undefined, null)).toBeNull();
+  });
+  test('sums up how sure the model was, and how right', () => {
+    const t = (route, outcome, assessmentMiss) => trial('a', outcome, { assessment: { route, thinkingChars: 10 }, assessmentMiss });
+    const c = summarize([t('direct', 'pass'), t('direct', 'fail', 'overconfident'), t('check', 'pass')]).metacognition;
+    expect(c).toMatchObject({ overconfident: 1, assessed: 3, directSuccess: 0.5, lookupSuccess: 1, thinkingChars: 10 });
   });
 });
 

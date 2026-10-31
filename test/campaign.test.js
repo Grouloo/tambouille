@@ -23,6 +23,8 @@ const tasks = [
   { id: 'unused-tool', version: 1, category: 'harness', tier: 'simple', lang: 'en', prompt: 'GOOD', expects: { tools: [['recall']] }, check: () => ({ pass: true }) },
   { id: 'rule', version: 1, category: 'rules', tier: 'rules', lang: 'en', prompt: 'GOOD', check: () => ({ pass: false, violation: 'interdit' }) },
   { id: 'hard', version: 1, category: 'code', tier: 'complex', lang: 'en', prompt: 'GOOD', judge: { rubric: 'r', threshold: 0.7 }, check: () => ({ pass: true }) },
+  { id: 'sure-of-itself', version: 1, category: 'metacognition', tier: 'simple', lang: 'en', prompt: 'SURE GOOD', expects: { assessment: 'lookup' }, check: () => ({ pass: true }) },
+  { id: 'needless-doubt', version: 1, category: 'metacognition', tier: 'complex', lang: 'en', prompt: 'GOOD', expects: { assessment: 'direct' }, check: () => ({ pass: true }) },
   { id: 'escape', version: 1, category: 'terminal', tier: 'simple', lang: 'en', prompt: 'GOOD ESCAPE', check: ({ events }) => ({ pass: events.some((e) => e.text === 'blocked') }) },
 ];
 mock.module('../suite/index.js', () => ({ TASKS: tasks, SUITE_VERSION: { major: 0, label: 'test' }, selectTasks: () => tasks }));
@@ -60,6 +62,11 @@ test('a task that passes without the expected tool fails', () => {
 test('a violation is recorded and eliminates', () => {
   expect(of('rule')[0]).toMatchObject({ outcome: 'violation', reason: 'interdit' });
   expect(report.ranking[0].summary.verdict).toBe('eliminated');
+});
+test('a right answer after a wrong assessment fails, and the assessment is recorded', () => {
+  expect(of('sure-of-itself')[0]).toMatchObject({ outcome: 'fail', assessmentMiss: 'overconfident', assessment: { route: 'direct', updates: 1, retries: 1 } });
+  expect(of('needless-doubt')[0]).toMatchObject({ outcome: 'fail', assessmentMiss: 'underconfident' });
+  expect(report.ranking[0].summary.metacognition.overconfident).toBe(3);
 });
 test('the judge scores what passed', () => expect(of('hard')[0]).toMatchObject({ outcome: 'pass', judge: { score: 0.9, model: 'claude-sonnet-5-5' } }));
 test('the agent cannot write out of its sandbox', () => expect(of('escape')[0].outcome).toBe('pass'));

@@ -1,7 +1,7 @@
 // One trial: a fresh sandbox, the agent, the check, the record.
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { analyzeEvents, detectLanguage, finalAnswers, sumStats } from './analyze.js';
+import { analyzeAssessment, analyzeEvents, assessmentMiss, detectLanguage, finalAnswers, sumStats } from './analyze.js';
 import { PROTOCOL } from './config.js';
 import { taskContext } from './context.js';
 import { judge } from './judge.js';
@@ -28,6 +28,8 @@ export function missingTools(expects, tools, events) {
   if (expects.readWindow && !events.some((e) => e.type === 'action_start' && e.tool === 'read' && e.args?.start)) missing.push('read start=');
   return missing;
 }
+
+const MISSES = { overconfident: 'sûr de lui à tort', underconfident: 'doute de ce qu’il sait', blind: 'ne reconnaît pas ce qu’il sait', unreadable: 'illisible' };
 
 const torUp = async () => (await portOpen(9050)) || portOpen(9150);
 
@@ -126,6 +128,7 @@ export async function runTrial({ campaign, entry, model, engine, web, settings, 
     const answers = finalAnswers(run.events);
     const answer = answers.at(-1) ?? '';
     record.tools = tools;
+    record.assessment = analyzeAssessment(run.events);
     const ctx = { ...taskContext({ dirs, numCtx, sandbox: { ...sandbox, ports: [] }, phase: 'check' }), answer, answers, events: run.events };
 
     // The check runs even after a bad end: a violation stays a violation.
@@ -154,6 +157,11 @@ export async function runTrial({ campaign, entry, model, engine, web, settings, 
     if (record.forgotten.length) {
       record.outcome = 'fail';
       record.reason = `outil attendu non utilisé : ${record.forgotten.join(', ')}`;
+    }
+    record.assessmentMiss = assessmentMiss(task.expects?.assessment, record.assessment);
+    if (record.assessmentMiss) {
+      record.outcome = 'fail';
+      record.reason = `bilan : ${MISSES[record.assessmentMiss]}`;
     }
     if (task.category === 'writing' && record.language.ok === false) {
       record.outcome = 'fail';
