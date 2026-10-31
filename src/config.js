@@ -9,7 +9,7 @@ export const DATA = process.env.TAMBOUILLE_DATA ?? path.join(ROOT, '.data'); // 
 export const RESULTS = process.env.TAMBOUILLE_RESULTS ?? path.join(ROOT, 'results'); // what is versioned
 export const SUITE = path.join(ROOT, 'suite');
 
-export const PONEY_DIR = process.env.PONEY_DIR ?? path.join(os.homedir(), 'Desktop', 'Exorel', 'local-codex');
+export const PONEY_DIR = process.env.PONEY_DIR ?? path.resolve(ROOT, '..', 'local-codex');
 export const PONEY_CLI = path.join(PONEY_DIR, 'src', 'cli.js');
 export const APP_DATA = process.env.PONEY_APP_DATA ?? path.join(os.homedir(), 'Library', 'Application Support', 'poney');
 
