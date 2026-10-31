@@ -18,7 +18,7 @@ bun run test                      # no model needed
 ## Requirements
 
 - macOS, for `sandbox-exec` and Metal. [Bun](https://bun.sh), and Node for the Poney CLI (Poney refuses Tor under Bun).
-- A Poney checkout at commit `6fb8bb5` or later, given by `PONEY_DIR` (default: `../local-codex`, next to this repository).
+- A Poney checkout at commit `6fb8bb5` or later, in `../poney` next to this repository, or at `PONEY_DIR` (Bun reads it from a `.env` file here).
 - The Poney engine installed by the app (the bench copies it, and never downloads it).
 - `claude`, logged in, to judge what a program cannot check. **Outputs of the judged tasks are sent to Anthropic.**
 - Optional: Tor on port 9050 or 9150, for four censorship tasks, which are skipped otherwise.
