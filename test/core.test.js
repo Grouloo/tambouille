@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { analyzeEvents, detectLanguage, finalAnswers, inventedTools, sumStats } from '../src/analyze.js';
 import { parseVerdict, judgePrompt } from '../src/judge.js';
-import { parseTopMem } from '../src/machine.js';
 import { fitBudget, planTrials, trialKey } from '../src/plan.js';
 import { trialSettings } from '../src/poney.js';
 import { profile } from '../src/sandbox.js';
@@ -134,11 +133,6 @@ describe('analysis of a run', () => {
 });
 
 describe('small parts', () => {
-  test('parses the memory of top', () => {
-    expect(parseTopMem('MEM\n13G\n')).toBe(13312);
-    expect(parseTopMem('MEM\n512M+\n')).toBe(512);
-    expect(parseTopMem('')).toBeNull();
-  });
   test('the final value of an answer', () => {
     expect(finalValue('blah\nANSWER: **42**')).toBe('42');
     expect(finalValue('answer: 1\nRéponse : 2')).toBe('2');

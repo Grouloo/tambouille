@@ -110,7 +110,7 @@ export async function runTrial({ campaign, entry, model, engine, web, settings, 
     if (task.testCommand) argv.push('--test-command', task.testCommand);
     const { cmd, env } = await wrap(argv, { dirs, ...sandbox });
     const transcript = transcriptPath(campaign, `${model.id}-${key}`);
-    const memory = sampleMemory(engine.pid);
+    const memory = sampleMemory(engine.pid, { wiredBefore: engine.wiredBefore });
     const t0 = Date.now();
     const run = await runAgent({ cmd, env, cwd: dirs.work, transcript, timeoutMs: (task.trialMinutes ?? PROTOCOL.trialMinutes) * 60000, signal });
     const durationMs = Date.now() - t0;

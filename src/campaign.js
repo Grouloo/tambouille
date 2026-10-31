@@ -5,7 +5,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { DATA, PROTOCOL } from './config.js';
 import { startFakeWeb } from './fakeweb.js';
-import { footprintMb, machineFingerprint, machineIssues, pressure, stayAwake } from './machine.js';
+import { machineFingerprint, machineIssues, pressure, sampleMemory, stayAwake, wiredMb } from './machine.js';
 import { expectedMinutes, planTrials, trialKey } from './plan.js';
 import { engineCopy, poneyModels, poneyVersion, readSettings, startEngine } from './poney.js';
 import { canary } from './sandbox.js';
@@ -34,8 +34,10 @@ async function modelHash(file) {
 async function probeOne({ model, numCtx, engineDir, cacheDir, settingsFile }) {
   const at = new Date().toISOString();
   let engine = null;
+  const wiredBefore = await wiredMb();
   try {
     engine = await startEngine({ model: model.id, numCtx, cacheDir, engineDir, settingsFile, timeoutMs: PROTOCOL.probeMinutes * 60000 });
+    const memory = sampleMemory(engine.pid, { wiredBefore, everyMs: 1000 });
     const res = await fetch(`${engine.baseUrl}/v1/chat/completions`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${engine.apiKey}` },
@@ -44,7 +46,7 @@ async function probeOne({ model, numCtx, engineDir, cacheDir, settingsFile }) {
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const body = await res.json();
-    const memoryMb = await footprintMb(engine.pid);
+    const memoryMb = await memory.stop();
     const p = await pressure();
     return { type: 'probe', at, model: model.id, numCtx, fits: p.level < 4, loadMs: engine.loadMs, tps: body.timings?.predicted_per_second ?? null, firstTokenMs: body.timings?.prompt_ms ?? null, memoryMb, estimatedMb: Math.round(engine.memory / 1048576), pressure: p };
   } catch (e) {
@@ -165,7 +167,10 @@ export async function runCampaign(campaign, { log = console.log, signal } = {}) 
               await engine?.stop();
               state.phase = 'chargement';
               await publish();
+              const wiredBefore = await wiredMb();
               engine = await startEngine({ model: model.id, numCtx: entry.numCtx, cacheDir, engineDir, settingsFile });
+              engine.wiredBefore = wiredBefore;
+              live.enginePid = engine.pid;
             }
             // Something else took the machine: wait, and do not trust what ran meanwhile.
             const own = [engine.pid];

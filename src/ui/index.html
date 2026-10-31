@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tambouille</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>Tambouille</h1>
+    <nav>
+      <button data-view="launch" class="on">Lancer</button>
+      <button data-view="history">Historique</button>
+      <button data-view="compare">Comparer</button>
+    </nav>
+  </header>
+  <main>
+    <section id="live" hidden></section>
+
+    <section id="launch" class="view">
+      <div id="issues"></div>
+      <div class="columns">
+        <fieldset>
+          <legend>Modèles</legend>
+          <div id="models"></div>
+        </fieldset>
+        <fieldset>
+          <legend>Évaluations</legend>
+          <div id="categories"></div>
+          <details><summary>Choisir des tâches précises</summary><div id="tasks"></div></details>
+        </fieldset>
+        <fieldset>
+          <legend>Durée par modèle</legend>
+          <label class="budget"><input id="budget" type="range" min="15" max="600" step="15"><output id="budget-label"></output></label>
+          <label class="check"><input id="reference" type="checkbox" checked> Rejouer le modèle de référence si Poney a changé</label>
+        </fieldset>
+      </div>
+      <div id="estimate"></div>
+      <button id="run" class="primary">Lancer la campagne</button>
+      <p id="run-error" class="error" role="alert"></p>
+    </section>
+
+    <section id="history" class="view" hidden>
+      <div class="columns history">
+        <div id="campaigns"></div>
+        <div id="report"></div>
+      </div>
+    </section>
+
+    <section id="compare" class="view" hidden>
+      <div class="pickers">
+        <label>A <select id="compare-a"></select></label>
+        <label>B <select id="compare-b"></select></label>
+      </div>
+      <div id="comparison"></div>
+    </section>
+  </main>
+  <div id="tooltip" role="status" hidden></div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

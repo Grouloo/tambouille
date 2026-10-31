@@ -74,14 +74,19 @@ export async function unloadOthers() {
   }
 }
 
-const MIB = { K: 1 / 1024, M: 1, G: 1024, T: 1024 * 1024 };
-export function parseTopMem(text) {
-  const m = text.trim().split('\n').pop().trim().match(/^([\d.]+)([KMGT])/);
-  return m ? Math.round(Number(m[1]) * MIB[m[2]]) : null;
-}
+/** What a process holds, in MiB. Not its footprint (`top`, `footprint`): that leaves out the weights, mapped and wired for Metal. */
+export const residentMb = async (pid) => {
+  const kb = Number((await sh('/bin/ps', '-o', 'rss=', '-p', String(pid))).trim());
+  return kb ? Math.round(kb / 1024) : null;
+};
 
-/** Physical footprint of a process, in MiB. */
-export const footprintMb = async (pid) => parseTopMem(await sh('/usr/bin/top', '-l', '1', '-pid', String(pid), '-stats', 'mem'));
+/** All the memory wired on the machine, in MiB: where Metal buffers show. */
+export async function wiredMb() {
+  const out = await sh('/usr/bin/vm_stat');
+  const page = Number(out.match(/page size of (\d+)/)?.[1] ?? 16384);
+  const pages = Number(out.match(/Pages wired down:\s+(\d+)/)?.[1]);
+  return pages ? Math.round((pages * page) / 1048576) : null;
+}
 
 export async function pressure() {
   const level = Number((await sh('/usr/sbin/sysctl', '-n', 'kern.memorystatus_vm_pressure_level')).trim());
@@ -105,13 +110,14 @@ export const portOpen = (port, host = '127.0.0.1') => new Promise((resolve) => {
 /** Keeps the Mac awake as long as this process lives. */
 export const stayAwake = () => Bun.spawn(['/usr/bin/caffeinate', '-dimsu', '-w', String(process.pid)], { stdout: 'ignore', stderr: 'ignore' });
 
-/** Peak footprint of a process, sampled while `stop` is not called. */
-export function sampleMemory(pid, everyMs = 5000) {
+/** Peak memory of a model: the larger of what its process holds and what got wired since `wiredBefore`. */
+export function sampleMemory(pid, { wiredBefore = null, everyMs = 5000 } = {}) {
   let peak = 0;
   let stopped = false;
   const loop = (async () => {
     while (!stopped) {
-      peak = Math.max(peak, (await footprintMb(pid)) ?? 0);
+      const [resident, wired] = await Promise.all([residentMb(pid), wiredMb()]);
+      peak = Math.max(peak, resident ?? 0, wiredBefore != null && wired != null ? wired - wiredBefore : 0);
       await Bun.sleep(everyMs);
     }
   })();
