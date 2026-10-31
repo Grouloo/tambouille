@@ -38,3 +38,5 @@ fail, including a secret planted in the real home and an unlisted port. A failur
 
 The folder is untrusted. Checks read files through `taskContext`, which refuses links leading out of the sandbox, and
 run Git and the agent's code in the sandbox with no network: a hook or `core.fsmonitor` would otherwise run on the host.
+
+The frozen web shows `127.0.0.1` URLs, as the sandbox has no DNS. A model may notice and comment on it: seen once, without effect.

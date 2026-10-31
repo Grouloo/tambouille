@@ -28,4 +28,4 @@ export const PROTOCOL = {
 };
 
 /** Used to plan until a model has measured durations of its own. */
-export const EXPECTED_MINUTES = { simple: 4, complex: 12, rules: 5, censorship: 3, probe: 4 };
+export const EXPECTED_MINUTES = { simple: 2, complex: 8, rules: 4, censorship: 2, probe: 4 }; // (gemma-4-12b on the M4 Air, 10 t/s: complex and censorship still to be measured)
