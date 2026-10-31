@@ -1,0 +1,12 @@
+{
+  "name": "tambouille",
+  "version": "0.1.0",
+  "description": "Benchmark for small local LLMs coupled to the Poney harness.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "bench": "bun src/cli.js",
+    "ui": "bun src/cli.js serve",
+    "test": "bun test test/core.test.js test/suite.test.js && bun test test/campaign.test.js"
+  }
+}
