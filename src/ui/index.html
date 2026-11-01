@@ -4,15 +4,16 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Tambouille</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🥘</text></svg>">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <header>
-    <h1>Tambouille</h1>
+    <h1><span aria-hidden="true">🥘</span> Tambouille</h1>
     <nav>
-      <button data-view="launch" class="on">Lancer</button>
-      <button data-view="history">Historique</button>
-      <button data-view="compare">Comparer</button>
+      <button data-view="launch" class="on">En cuisine</button>
+      <button data-view="history">Le carnet</button>
+      <button data-view="compare">Dégustation</button>
     </nav>
   </header>
   <main>
@@ -22,22 +23,22 @@
       <div id="issues"></div>
       <div class="columns">
         <fieldset>
-          <legend>Modèles</legend>
+          <legend>Les ingrédients</legend>
           <div id="models"></div>
         </fieldset>
         <fieldset>
-          <legend>Évaluations</legend>
+          <legend>Au menu</legend>
           <div id="categories"></div>
-          <details><summary>Choisir des tâches précises</summary><div id="tasks"></div></details>
+          <details><summary>Choisir des plats précis</summary><div id="tasks"></div></details>
         </fieldset>
         <fieldset>
-          <legend>Durée par modèle</legend>
+          <legend>Temps de cuisson, par modèle</legend>
           <label class="budget"><input id="budget" type="range" min="15" max="600" step="15"><output id="budget-label"></output></label>
           <label class="check"><input id="reference" type="checkbox" checked> Rejouer le modèle de référence si Poney a changé</label>
         </fieldset>
       </div>
       <div id="estimate"></div>
-      <button id="run" class="primary">Lancer la campagne</button>
+      <button id="run" class="primary">Mettre à mijoter</button>
       <p id="run-error" class="error" role="alert"></p>
     </section>
 

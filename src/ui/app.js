@@ -65,7 +65,7 @@ async function updateEstimate() {
   const turn = ++estimateTurn;
   const noTasks = s.categories?.length === 0 && !s.ids.length;
   $('#run').disabled = !s.models.length || noTasks || Boolean(state.overview?.live.length) || Boolean(state.overview?.issues.length);
-  if (!s.models.length || noTasks) return box.replaceChildren(el('p', { class: 'muted' }, 'Choisissez au moins un modèle et une évaluation.'));
+  if (!s.models.length || noTasks) return box.replaceChildren(el('p', { class: 'muted' }, 'Il manque un ingrédient : choisissez au moins un modèle et une évaluation.'));
   const r = await api('estimate', s);
   if (turn !== estimateTurn) return;
   box.replaceChildren(el('table', {},
@@ -94,13 +94,13 @@ function renderLive(live) {
   const box = $('#live');
   box.hidden = !live.length;
   box.replaceChildren(...live.map((c) => el('div', { class: 'card' },
-    el('h2', {}, `Campagne ${c.id}`),
+    el('h2', {}, `Ça mijote : campagne ${c.id}`),
     c.status !== 'running' ? el('p', {}, c.status) : null,
     ...Object.entries(c.models).flatMap(([id, m]) => [
       el('div', {}, `${short(id)} : ${m.done} / ${m.total || '?'}`, el('span', { class: 'muted' }, ` · ${PHASES[m.phase] ?? m.phase}${m.current ? ` · ${m.current}` : ''}`)),
       el('div', { class: 'progress' }, el('div', { style: `width:${m.total ? (m.done / m.total) * 100 : 0}%` })),
     ]),
-    el('button', { class: 'plain', onclick: () => api('stop', {}) }, 'Arrêter (reprise possible)'))));
+    el('button', { class: 'plain', onclick: () => api('stop', {}) }, 'Retirer du feu (reprise possible)'))));
 }
 
 // ---------- report ----------
@@ -224,7 +224,7 @@ async function showReport(id) {
 async function showHistory() {
   const list = await api('history');
   $('#campaigns').replaceChildren(...(list.length ? list.map((c) => el('button', { class: 'campaign', 'data-id': c.id, onclick: () => showReport(c.id) },
-    c.id, el('small', {}, `${c.models.length} modèle${c.models.length > 1 ? 's' : ''} · ${c.trials} essais · ${c.status === 'finished' ? 'terminée' : c.status === 'stopped' ? 'arrêtée' : 'en cours'}${c.fullSuite ? '' : ' · partielle'}`))) : [el('p', { class: 'muted' }, 'Aucune campagne pour l’instant.')]));
+    c.id, el('small', {}, `${c.models.length} modèle${c.models.length > 1 ? 's' : ''} · ${c.trials} essais · ${c.status === 'finished' ? 'terminée' : c.status === 'stopped' ? 'arrêtée' : 'en cours'}${c.fullSuite ? '' : ' · partielle'}`))) : [el('p', { class: 'muted' }, 'Le carnet est vide pour l’instant.')]));
   if (list.length) await showReport(state.selected ?? list[0].id);
   const options = list.map((c) => el('option', { value: c.id }, c.id));
   $('#compare-a').replaceChildren(...options.map((o) => o.cloneNode(true)));
@@ -236,7 +236,7 @@ async function showComparison() {
   const a = $('#compare-a').value;
   const b = $('#compare-b').value;
   const box = $('#comparison');
-  if (!a || !b) return box.replaceChildren(el('p', { class: 'muted' }, 'Il faut deux campagnes.'));
+  if (!a || !b) return box.replaceChildren(el('p', { class: 'muted' }, 'Il faut deux campagnes pour comparer.'));
   const [c, ra, rb] = await Promise.all([api(`compare?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`), api(`report?id=${encodeURIComponent(a)}`), api(`report?id=${encodeURIComponent(b)}`)]);
   box.replaceChildren(
     ...c.warnings.map((w) => el('div', { class: 'notice' }, w)),
