@@ -10,7 +10,8 @@ export const RESULTS = process.env.TAMBOUILLE_RESULTS ?? path.join(ROOT, 'result
 export const SUITE = path.join(ROOT, 'suite');
 
 export const PONEY_DIR = process.env.PONEY_DIR ?? path.resolve(ROOT, '..', 'poney');
-export const PONEY_CLI = path.join(PONEY_DIR, 'src', 'cli.js');
+// (Node runs Poney's TypeScript directly; the fake Poney of the tests stays in JavaScript)
+export const PONEY_CLI = ['cli.ts', 'cli.js'].map((name) => path.join(PONEY_DIR, 'src', name)).find((file) => fs.existsSync(file)) ?? path.join(PONEY_DIR, 'src', 'cli.ts');
 export const APP_DATA = process.env.PONEY_APP_DATA ?? path.join(os.homedir(), 'Library', 'Application Support', 'poney');
 
 /** Node, not Bun: Poney refuses Tor under Bun. */
@@ -25,6 +26,7 @@ export const PROTOCOL = {
   referenceModel: process.env.TAMBOUILLE_REFERENCE ?? null, // prefix of the id, replayed when Poney changed (default: the smallest model)
   judgeModel: 'claude-sonnet-5-5',
   pauseBetweenModelsSeconds: 300, // (a fanless Mac needs it)
+  maxBrokenTasks: 3, // different tasks in a row: the campaign stops, what breaks is the bench, not the task
 };
 
 /** Used to plan until a model has measured durations of its own. */

@@ -114,6 +114,7 @@ export async function runCampaign(campaign: Campaign, { log = console.log, signa
   const previous = await loadCampaign(campaign.id).catch(() => null);
   const records: RunRecord[] = [...(previous?.probes ?? []), ...(previous?.trials ?? [])];
   campaign.status = 'running';
+  delete campaign.stopReason;
   await saveCampaign(campaign);
   const settings = await readSettings();
   const engineDir = await engineCopy(campaign.fingerprint.poney.engineBuild);
@@ -131,6 +132,7 @@ export async function runCampaign(campaign: Campaign, { log = console.log, signa
     await appendRecord(campaign.id, r);
   };
 
+  const brokenTasks = new Set<string>();
   try {
     for (const [index, model] of campaign.models.entries()) {
       if (signal?.aborted) break;
@@ -212,6 +214,9 @@ export async function runCampaign(campaign: Campaign, { log = console.log, signa
             }
             await record(r);
             log(`[${model.id}] ${key} → ${r.outcome}${r.reason ? ` (${r.reason})` : ''}`);
+            if (r.outcome === 'infra') brokenTasks.add(entry.task.id);
+            else brokenTasks.clear();
+            if (brokenTasks.size >= PROTOCOL.maxBrokenTasks) throw new Error(`${brokenTasks.size} tâches en panne de suite : ${r.reason?.trim().slice(0, 200)}`);
             done.add(key);
             state.done++;
             const times = trialsOf().filter((x) => x.tier === entry.task.tier && x.durationMs).map((x) => (x.durationMs ?? 0) / 60000);
@@ -224,12 +229,15 @@ export async function runCampaign(campaign: Campaign, { log = console.log, signa
         await engine?.stop();
       }
     }
+  } catch (e) {
+    campaign.stopReason = message(e); // (not finished: it can be resumed)
+    throw e;
   } finally {
     web.stop();
     awake.kill();
     await fs.rm(path.join(work, 'probe-cache'), { recursive: true, force: true });
     await fs.rm(path.join(work, 'cache'), { recursive: true, force: true });
-    campaign.status = signal?.aborted ? 'stopped' : 'finished';
+    campaign.status = signal?.aborted || campaign.stopReason ? 'stopped' : 'finished';
     campaign.finishedAt = new Date().toISOString();
     await saveCampaign(campaign);
     await fs.rm(livePath(campaign.id), { force: true });

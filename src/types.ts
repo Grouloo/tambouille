@@ -103,7 +103,7 @@ export interface Fingerprint {
   judge: string;
 }
 export interface Campaign {
-  id: string; name?: string; status: string; startedAt: string; finishedAt?: string; budgetMinutes: number;
+  id: string; name?: string; status: string; stopReason?: string; startedAt: string; finishedAt?: string; budgetMinutes: number;
   selection: { categories: string[] | null; ids: string[] | null };
   fullSuite: boolean; taskIds: string[]; models: CampaignModel[]; fingerprint: Fingerprint;
 }

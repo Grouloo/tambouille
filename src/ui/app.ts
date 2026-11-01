@@ -260,6 +260,7 @@ function renderCampaign(c: Progress) {
       c.live ? null : el('button', { class: 'plain with-icon danger', onclick: () => removeCampaign(c) }, icon(ICON_TRASH), 'Supprimer')),
     el('p', { class: 'muted' }, [`Démarrée le ${when(c.startedAt)}`, c.finishedAt ? `finie le ${when(c.finishedAt)}` : null, `${duration(c.budgetMinutes)} par modèle`, c.machine, `Poney ${c.poney}`, `suite ${c.suite}${c.fullSuite ? '' : ', partielle'}`].filter(Boolean).join(' · ')),
     c.live && c.status !== 'running' ? el('p', {}, c.status) : null,
+    c.stopReason ? el('p', { class: 'error', role: 'alert' }, `Arrêtée : ${c.stopReason}`) : null,
     el('div', { class: 'model-list' }, ...c.models.map(renderModelRow))));
   renderPanel();
 }

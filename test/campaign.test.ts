@@ -98,6 +98,15 @@ test('a new campaign never reuses the id of an existing one', async () => {
   await deleteCampaign('to-delete');
   expect(await loadCampaign('to-delete').catch(() => null)).toBeNull();
 });
+test('a campaign whose trials keep breaking stops, and can be resumed', async () => {
+  const { prepare, runCampaign } = await import('../src/campaign.ts');
+  const crashing = ['broken-too', 'broken-as-well'].map((id) => ({ ...tasks[2], id }));
+  tasks.push(...crashing);
+  const campaign = { ...await prepare({ budgetMinutes: 600 }), id: 'crashing', taskIds: ['broken', ...crashing.map((t) => t.id)] };
+  await expect(runCampaign(campaign, { log: () => {} })).rejects.toThrow('3 tâches en panne de suite');
+  tasks.length -= crashing.length;
+  expect(campaign).toMatchObject({ status: 'stopped', stopReason: expect.stringContaining('boom') });
+});
 test('resuming plays nothing twice', async () => {
   const { runCampaign, campaignReport } = await import('../src/campaign.ts');
   const { loadCampaign } = await import('../src/store.ts');

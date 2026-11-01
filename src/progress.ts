@@ -134,7 +134,7 @@ export async function progressOf(id: string, live: LiveCampaign | null = null) {
   }
   const f = saved.fingerprint;
   return {
-    id, name: saved.name, live: Boolean(live), status: live?.status ?? saved.status, startedAt: saved.startedAt, finishedAt: saved.finishedAt, budgetMinutes: saved.budgetMinutes, fullSuite: saved.fullSuite,
+    id, name: saved.name, live: Boolean(live), status: live?.status ?? saved.status, stopReason: saved.stopReason, startedAt: saved.startedAt, finishedAt: saved.finishedAt, budgetMinutes: saved.budgetMinutes, fullSuite: saved.fullSuite,
     machine: `${f.machine.chip}, ${f.machine.memoryGb} Go`, poney: f.poney.commit?.slice(0, 7), suite: f.suite.label, models,
   };
 }

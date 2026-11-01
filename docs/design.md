@@ -148,3 +148,7 @@ major suite version, and only on tasks in common, at the same task version. If P
 and `--reference` replays the reference model to measure what the change did on its own.
 
 Results are versioned; transcripts are heavy and private, and stay in `.data`.
+
+Infrastructure failures on three different tasks in a row stop the campaign instead of going through the rest of the
+plan: what breaks is then the bench, not the task (Poney moved, for instance). The campaign keeps the reason, and resuming replays
+these trials.
