@@ -154,6 +154,7 @@ export async function runCampaign(campaign, { log = console.log, signal } = {}) 
       await saveCampaign(campaign);
       const done = new Set(records.filter((r) => r.type === 'trial' && r.model === model.id && r.outcome !== 'infra').map((r) => r.key));
       state.total = plan.length;
+      state.plan = plan.map(trialKey);
       state.done = plan.filter((e) => done.has(trialKey(e))).length;
 
       let engine = null;
@@ -189,6 +190,7 @@ export async function runCampaign(campaign, { log = console.log, signal } = {}) 
             live.status = 'running';
             state.phase = entry.phase;
             state.current = key;
+            state.currentSince = Date.now();
             await publish();
             log(`[${model.id}] ${key}`);
             const r = await runTrial({ campaign: campaign.id, entry, model, engine, web, settings, primary: entry.numCtx === primaryCtx, signal, pendingDir: path.join(DATA, 'pending', campaign.id) });

@@ -207,3 +207,17 @@ describe('small parts', () => {
     expect(() => parseVerdict(JSON.stringify({ is_error: true, result: 'no' }))).toThrow();
   });
 });
+
+test('the activity of a trial survives an incomplete last line', async () => {
+  const { activityOf } = await import('../src/progress.js');
+  const lines = [{ type: 'triage', route: 'investigate', known: [], doubts: [], unknowns: [1] }, { type: 'action_start', id: 1, tool: 'read', args: { path: 'a.txt' } }, { type: 'action_end', id: 1, ok: false }, { type: 'assistant_start' }, { type: 'delta', kind: 'thinking', text: 'hm' }];
+  const a = activityOf(`${lines.map((l) => JSON.stringify(l)).join('\n')}\n{"type":"del`);
+  expect(a.steps[1]).toEqual({ kind: 'tool', tool: 'read', text: 'a.txt', ok: false });
+  expect(a.draft).toEqual({ kind: 'thinking', text: 'hm' });
+});
+test('every planned trial has a state, and a result wins over the current key', async () => {
+  const { trialRows } = await import('../src/progress.js');
+  const rows = trialRows(['a@1#1', 'b@1#1', 'c@1#1'], [{ key: 'a@1#1', outcome: 'fail', reason: 'non' }, { key: 'x@1#1', outcome: 'pass' }], 'b@1#1');
+  expect(rows.map((r) => r.state)).toEqual(['fail', 'running', 'pending', 'pass']);
+  expect(trialRows(['a@1#1'], [{ key: 'a@1#1', outcome: 'pass' }], 'a@1#1')[0].state).toBe('pass');
+});

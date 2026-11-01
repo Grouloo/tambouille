@@ -8,6 +8,7 @@ import { DATA, PROTOCOL, ROOT } from './config.js';
 import { machineIssues, unloadOthers } from './machine.js';
 import { fitBudget, planTrials } from './plan.js';
 import { poneyModels, readSettings } from './poney.js';
+import { progressOf } from './progress.js';
 import { compare } from './score.js';
 import { listCampaigns, loadCampaign } from './store.js';
 import { TASKS, selectTasks } from '../suite/index.js';
@@ -75,6 +76,7 @@ async function historyList() {
 
 const ROUTES = {
   'GET /api/overview': () => overview(),
+  'GET /api/progress': async () => Promise.all((await liveCampaigns()).map(progressOf)),
   'GET /api/history': () => historyList(),
   'GET /api/report': (url) => campaignReport(url.searchParams.get('id')),
   'GET /api/compare': async (url) => compare(await loadCampaign(url.searchParams.get('a')), await loadCampaign(url.searchParams.get('b'))),

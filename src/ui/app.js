@@ -65,7 +65,7 @@ async function updateEstimate() {
   const turn = ++estimateTurn;
   const noTasks = s.categories?.length === 0 && !s.ids.length;
   $('#run').disabled = !s.models.length || noTasks || Boolean(state.overview?.live.length) || Boolean(state.overview?.issues.length);
-  if (!s.models.length || noTasks) return box.replaceChildren(el('p', { class: 'muted' }, 'Il manque un ingrédient : choisissez au moins un modèle et une évaluation.'));
+  if (!s.models.length || noTasks) return box.replaceChildren(el('p', { class: 'muted' }, 'Choisissez au moins un modèle et une évaluation.'));
   const r = await api('estimate', s);
   if (turn !== estimateTurn) return;
   box.replaceChildren(el('table', {},
@@ -83,24 +83,84 @@ $('#run').addEventListener('click', async () => {
   $('#run-error').textContent = '';
   try {
     await api('run', selection());
-    setTimeout(refresh, 1500);
+    setTimeout(() => { refresh(); refreshLive(); }, 1500);
   } catch (e) {
     $('#run-error').textContent = e.message;
   }
 });
 
 // ---------- live ----------
+const STATES = {
+  pass: ['✓', 'Réussi'], fail: ['✗', 'Échoué'], violation: ['⛔', 'Violation'], infra: ['⚠', 'Panne'], skipped: ['–', 'Ignoré'],
+  running: ['▶', 'En cours'], pending: ['·', 'À venir'],
+};
+const TOOLS = { list: 'Liste', read: 'Lecture', search: 'Recherche', write: 'Écriture', edit: 'Édition', run: 'Commande', web_search: 'Recherche web', fetch: 'Page web', plan: 'Plan', agent: 'Sous-agent', remember: 'Mémorise', forget: 'Oublie', recall: 'Rappel' };
+const closedness = new Map(); // (what the user opened or closed survives the refresh)
+
+const countRows = (rows) => {
+  const n = { pass: 0, failed: 0, pending: 0 };
+  for (const r of rows) {
+    if (r.state === 'pass') n.pass++;
+    else if (r.state === 'pending' || r.state === 'running') n.pending++;
+    else n.failed++;
+  }
+  return n;
+};
+const countLine = (n) => `${n.pass} réussi${n.pass > 1 ? 's' : ''} · ${n.failed} échoué${n.failed > 1 ? 's' : ''} ou en panne · ${n.pending} restant${n.pending > 1 ? 's' : ''}`;
+
+function renderActivity(m) {
+  const row = m.rows.find((r) => r.key === m.running);
+  const a = m.activity;
+  return el('div', { class: 'activity' },
+    el('div', { class: 'activity-head' }, el('strong', {}, `▶ ${row.task}`), el('span', { class: 'muted' }, ` ${CATEGORIES[row.category] ?? row.category} · essai ${row.rep} · ${row.numCtx} de contexte${m.currentSince ? ` · depuis ${seconds(Date.now() - m.currentSince)}` : ''}`)),
+    a.context ? el('div', { class: 'muted' }, `Contexte utilisé : ${a.context.used} / ${a.context.numCtx}`) : null,
+    a.steps.length ? el('ol', { class: 'steps' }, ...a.steps.map((s) => el('li', { class: s.ok === false ? 'failed' : null },
+      s.kind === 'tool' ? el('b', {}, TOOLS[s.tool] ?? s.tool) : null, s.kind === 'answer' ? el('b', {}, 'Réponse') : null,
+      ` ${s.text}`, s.ok === false ? ' ✗' : null))) : el('p', { class: 'muted' }, 'En attente de la première action du modèle…'),
+    a.draft ? el('div', { class: 'draft' }, el('small', {}, a.draft.kind === 'thinking' ? 'Réflexion en cours' : 'Réponse en cours'), el('p', {}, a.draft.text)) : null);
+}
+
+function renderCategory(campaign, m, category, rows) {
+  const id = `${campaign}/${m.id}/${category}`;
+  const n = countRows(rows);
+  const active = rows.some((r) => r.state === 'running');
+  return el('details', { class: 'category', open: closedness.get(id) ?? active, ontoggle: (e) => closedness.set(id, e.target.open) },
+    el('summary', {}, CATEGORIES[category] ?? category, el('small', {}, ` ${rows.length - n.pending} / ${rows.length}${n.failed ? ` · ${n.failed} ✗` : ''}`)),
+    el('table', {}, el('tbody', {}, ...rows.map((r) => {
+      const [icon, label] = STATES[r.state] ?? ['?', r.state];
+      return el('tr', {},
+        el('td', { class: `trial-${r.state}` }, `${icon} ${label}`),
+        el('td', {}, `${r.task}${r.rep > 1 ? ` #${r.rep}` : ''}`, el('small', { class: 'muted' }, ` ${r.tier}`)),
+        el('td', { class: 'num' }, seconds(r.durationMs)),
+        el('td', { class: 'muted' }, [r.judge != null ? `juge ${percent(r.judge)}` : null, r.reason, r.detail].filter(Boolean).join(' · ')));
+    }))));
+}
+
+function renderModel(campaign, m) {
+  const n = countRows(m.rows);
+  const finished = m.rows.length - n.pending;
+  n.pending = Math.max(n.pending, m.total - finished); // (a campaign started before the plan was published only lists its mandatory trials)
+  const categories = [...new Set(m.rows.map((r) => r.category))];
+  const phase = !m.started ? 'en attente' : PHASES[m.phase] ?? m.phase;
+  return el('div', { class: 'live-model' },
+    el('div', { class: 'live-title' }, el('strong', {}, short(m.id)), el('span', { class: 'muted' }, ` ${finished} / ${m.total || '?'} · ${phase}`)),
+    el('div', { class: 'progress' }, el('div', { style: `width:${m.total ? (finished / m.total) * 100 : 0}%` })),
+    m.rows.length ? el('div', { class: 'muted' }, countLine(n)) : null,
+    m.running ? renderActivity(m) : null,
+    ...categories.map((c) => renderCategory(campaign, m, c, m.rows.filter((r) => r.category === c))));
+}
+
 function renderLive(live) {
   const box = $('#live');
   box.hidden = !live.length;
   box.replaceChildren(...live.map((c) => el('div', { class: 'card' },
-    el('h2', {}, `Ça mijote : campagne ${c.id}`),
+    el('div', { class: 'live-head' }, el('h2', {}, `Campagne ${c.id}`), el('button', { class: 'plain', onclick: () => api('stop', {}) }, 'Arrêter (reprise possible)')),
     c.status !== 'running' ? el('p', {}, c.status) : null,
-    ...Object.entries(c.models).flatMap(([id, m]) => [
-      el('div', {}, `${short(id)} : ${m.done} / ${m.total || '?'}`, el('span', { class: 'muted' }, ` · ${PHASES[m.phase] ?? m.phase}${m.current ? ` · ${m.current}` : ''}`)),
-      el('div', { class: 'progress' }, el('div', { style: `width:${m.total ? (m.done / m.total) * 100 : 0}%` })),
-    ]),
-    el('button', { class: 'plain', onclick: () => api('stop', {}) }, 'Retirer du feu (reprise possible)'))));
+    ...c.models.map((m) => renderModel(c.id, m)))));
+}
+
+async function refreshLive() {
+  renderLive(await api('progress').catch(() => []));
 }
 
 // ---------- report ----------
@@ -224,7 +284,7 @@ async function showReport(id) {
 async function showHistory() {
   const list = await api('history');
   $('#campaigns').replaceChildren(...(list.length ? list.map((c) => el('button', { class: 'campaign', 'data-id': c.id, onclick: () => showReport(c.id) },
-    c.id, el('small', {}, `${c.models.length} modèle${c.models.length > 1 ? 's' : ''} · ${c.trials} essais · ${c.status === 'finished' ? 'terminée' : c.status === 'stopped' ? 'arrêtée' : 'en cours'}${c.fullSuite ? '' : ' · partielle'}`))) : [el('p', { class: 'muted' }, 'Le carnet est vide pour l’instant.')]));
+    c.id, el('small', {}, `${c.models.length} modèle${c.models.length > 1 ? 's' : ''} · ${c.trials} essais · ${c.status === 'finished' ? 'terminée' : c.status === 'stopped' ? 'arrêtée' : 'en cours'}${c.fullSuite ? '' : ' · partielle'}`))) : [el('p', { class: 'muted' }, 'Aucune campagne pour l’instant.')]));
   if (list.length) await showReport(state.selected ?? list[0].id);
   const options = list.map((c) => el('option', { value: c.id }, c.id));
   $('#compare-a').replaceChildren(...options.map((o) => o.cloneNode(true)));
@@ -236,7 +296,7 @@ async function showComparison() {
   const a = $('#compare-a').value;
   const b = $('#compare-b').value;
   const box = $('#comparison');
-  if (!a || !b) return box.replaceChildren(el('p', { class: 'muted' }, 'Il faut deux campagnes pour comparer.'));
+  if (!a || !b) return box.replaceChildren(el('p', { class: 'muted' }, 'Il faut deux campagnes.'));
   const [c, ra, rb] = await Promise.all([api(`compare?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`), api(`report?id=${encodeURIComponent(a)}`), api(`report?id=${encodeURIComponent(b)}`)]);
   box.replaceChildren(
     ...c.warnings.map((w) => el('div', { class: 'notice' }, w)),
@@ -251,9 +311,9 @@ $('#compare-a').addEventListener('change', showComparison);
 $('#compare-b').addEventListener('change', showComparison);
 
 // ---------- views ----------
-for (const b of document.querySelectorAll('nav button')) {
+for (const b of document.querySelectorAll('.sidebar button')) {
   b.addEventListener('click', async () => {
-    for (const x of document.querySelectorAll('nav button')) x.classList.toggle('on', x === b);
+    for (const x of document.querySelectorAll('.sidebar button')) x.classList.toggle('on', x === b);
     for (const v of document.querySelectorAll('.view')) v.hidden = v.id !== b.dataset.view;
     state.view = b.dataset.view;
     if (state.view !== 'launch') await showHistory();
@@ -266,9 +326,10 @@ async function refresh() {
   const first = !state.overview;
   state.overview = o;
   renderIssues(o.issues);
-  renderLive(o.live);
   if (first) renderForm(o);
   else updateEstimate();
 }
 await refresh();
+await refreshLive();
 setInterval(refresh, 10000);
+setInterval(refreshLive, 3000);

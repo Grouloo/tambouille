@@ -8,14 +8,14 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header>
-    <h1><span aria-hidden="true">🥘</span> Tambouille</h1>
-    <nav>
-      <button data-view="launch" class="on">En cuisine</button>
-      <button data-view="history">Le carnet</button>
-      <button data-view="compare">Dégustation</button>
-    </nav>
-  </header>
+  <nav class="sidebar" aria-label="Navigation principale">
+    <a class="brand" href="/"><span aria-hidden="true">🥘</span> Tambouille</a>
+    <div class="links">
+      <button data-view="launch" class="on">Lancer</button>
+      <button data-view="history">Historique</button>
+      <button data-view="compare">Comparer</button>
+    </div>
+  </nav>
   <main>
     <section id="live" hidden></section>
 
@@ -23,22 +23,22 @@
       <div id="issues"></div>
       <div class="columns">
         <fieldset>
-          <legend>Les ingrédients</legend>
+          <legend>Modèles</legend>
           <div id="models"></div>
         </fieldset>
         <fieldset>
-          <legend>Au menu</legend>
+          <legend>Évaluations</legend>
           <div id="categories"></div>
-          <details><summary>Choisir des plats précis</summary><div id="tasks"></div></details>
+          <details><summary>Choisir des tâches précises</summary><div id="tasks"></div></details>
         </fieldset>
         <fieldset>
-          <legend>Temps de cuisson, par modèle</legend>
+          <legend>Durée par modèle</legend>
           <label class="budget"><input id="budget" type="range" min="15" max="600" step="15"><output id="budget-label"></output></label>
           <label class="check"><input id="reference" type="checkbox" checked> Rejouer le modèle de référence si Poney a changé</label>
         </fieldset>
       </div>
       <div id="estimate"></div>
-      <button id="run" class="primary">Mettre à mijoter</button>
+      <button id="run" class="primary">Lancer la campagne</button>
       <p id="run-error" class="error" role="alert"></p>
     </section>
 
