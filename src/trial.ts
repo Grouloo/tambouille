@@ -5,6 +5,7 @@ import { analyzeAssessment, analyzeEvents, assessmentMiss, detectLanguage, final
 import { PROTOCOL } from './config.ts';
 import { taskContext } from './context.ts';
 import { judge } from './judge.ts';
+import { gradeSlop } from './slop.ts';
 import { killStrays, portOpen, sampleMemory, thermalLimit } from './machine.ts';
 import { trialKey } from './plan.ts';
 import { agentArgs, trialSettings } from './poney.ts';
@@ -96,6 +97,17 @@ async function applyJudge(record: TrialRecord, task: Task & { judge: TaskJudge }
   }
 }
 
+/** The slop of what passed. An unreachable judge leaves it for `rejudge`, like a verdict. */
+async function applySlop(record: TrialRecord, slop: NonNullable<Task['slop']>, prompt: string, text: string, pendingDir: string) {
+  try {
+    record.slop = await gradeSlop({ prompt, kind: slop.kind, text });
+  } catch {
+    record.slopPending = true;
+    await fs.mkdir(pendingDir, { recursive: true });
+    await Bun.write(path.join(pendingDir, `${record.key.replace(/[^\w.@#-]+/g, '_')}.slop.json`), JSON.stringify({ prompt, kind: slop.kind, text }));
+  }
+}
+
 export async function runTrial({ campaign, entry, model, engine, web, settings, primary, signal, pendingDir, verify = true }: TrialOptions): Promise<TrialRecord> {
   const { task, numCtx, rep, phase } = entry;
   const key = trialKey(entry);
@@ -176,6 +188,10 @@ export async function runTrial({ campaign, entry, model, engine, web, settings, 
       record.reason = `mauvaise langue : ${got}`;
     }
     if (task.judge && (record.outcome === 'pass' || task.judge.censorship)) await applyJudge(record, { ...task, judge: task.judge }, target, numCtx, pendingDir);
+    if (task.slop && record.outcome === 'pass') {
+      const contents = await Promise.all((task.slop.files ?? []).map(async (f) => `--- ${f} ---\n${(await ctx.file(f)) ?? ''}`));
+      await applySlop(record, task.slop, messagesOf(task, numCtx).at(-1) ?? '', contents.length ? contents.join('\n\n') : answer, pendingDir);
+    }
     return record;
   } catch (e) {
     return { ...base, outcome: 'infra', reason: message(e).slice(0, 300) };

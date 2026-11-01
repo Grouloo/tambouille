@@ -32,7 +32,16 @@ export async function loadCampaign(id: string): Promise<LoadedCampaign> {
   const campaign = JSON.parse(await fs.readFile(path.join(dir(id), 'campaign.json'), 'utf8')) as Campaign;
   const raw = await fs.readFile(path.join(dir(id), 'trials.jsonl'), 'utf8').catch(() => '');
   const records = raw.split('\n').filter(Boolean).map((l) => JSON.parse(l) as RunRecord);
-  return { ...campaign, trials: records.filter((r) => r.type === 'trial'), probes: records.filter((r) => r.type === 'probe') };
+  const name = (await fs.readFile(path.join(dir(id), 'name.txt'), 'utf8').catch(() => '')).trim();
+  return { ...campaign, ...(name ? { name } : {}), trials: records.filter((r) => r.type === 'trial'), probes: records.filter((r) => r.type === 'probe') };
+}
+
+/** Apart from campaign.json, which a running campaign rewrites from its own copy. */
+export async function renameCampaign(id: string, name: string) {
+  await loadCampaign(id);
+  const file = path.join(dir(id), 'name.txt');
+  if (name.trim()) await fs.writeFile(file, `${name.trim().slice(0, 80)}\n`);
+  else await fs.rm(file, { force: true });
 }
 
 export async function listCampaigns() {

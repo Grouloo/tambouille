@@ -11,7 +11,7 @@ type Ranked = Report['ranking'][number];
 interface TaskInfo { id: string; category: string; tier: string; lang: string }
 interface Overview { models: { id: string; size: number }[]; issues: MachineIssue[]; live: { id: string }[]; tasks: TaskInfo[]; numCtx: number; budgetMinutes: number }
 interface Estimate { tasks: number; fullSuite: boolean; models: { model: string; played: number; total: number; counts: Record<string, number>; minutes: number; complete: boolean; mandatoryComplete: boolean; measured: boolean }[] }
-interface HistoryItem { id: string; status: string; models: string[]; fullSuite: boolean; trials: number }
+interface HistoryItem { id: string; name?: string; status: string; models: string[]; fullSuite: boolean; trials: number }
 interface Counts { pass: number; failed: number; pending: number }
 
 const $ = <T extends HTMLElement = HTMLElement>(s: string) => document.querySelector(s) as T;
@@ -43,7 +43,7 @@ const gigas = (mb: number | null | undefined) => (mb == null ? '—' : `${(mb / 
 const duration = (m: number) => (m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? ` ${String(m % 60).padStart(2, '0')}` : ''}`);
 const short = (id: string) => id.replace(/-(it|a\d+b)-.*$/, '');
 
-const state: { overview: Overview | null; view: string; selected: string | null; live: string[]; page: Progress | null; panel: string | null; transcript: { key: string; task: string; running: boolean } | null } = { overview: null, view: 'launch', selected: null, live: [], page: null, panel: null, transcript: null };
+const state: { renaming: string | null; overview: Overview | null; view: string; selected: string | null; live: string[]; page: Progress | null; panel: string | null; transcript: { key: string; task: string; running: boolean } | null } = { renaming: null, overview: null, view: 'launch', selected: null, live: [], page: null, panel: null, transcript: null };
 
 // ---------- launch ----------
 function renderIssues(issues: MachineIssue[]) {
@@ -154,7 +154,7 @@ function renderCategory(campaign: string, m: ProgressModel, category: string, ro
         el('td', { class: `trial-${r.state}` }, `${icon} ${label}`),
         el('td', {}, `${r.task}${r.rep > 1 ? ` #${r.rep}` : ''}`, el('small', { class: 'muted' }, ` ${r.tier}`)),
         el('td', { class: 'num' }, seconds(r.durationMs)),
-        el('td', { class: 'muted' }, [r.judge != null ? `juge ${percent(r.judge)}` : null, r.reason, r.detail].filter(Boolean).join(' · ')),
+        el('td', { class: 'muted' }, [r.judge != null ? `juge ${percent(r.judge)}` : null, r.slop != null ? `slop ${percent(r.slop)}` : null, r.reason, r.detail].filter(Boolean).join(' · ')),
         el('td', {}, r.state === 'pending' ? null : el('button', { class: 'plain small', onclick: () => openTranscript(r) }, 'Transcript')));
     }))));
 }
@@ -173,11 +173,58 @@ function renderModelRow(m: ProgressModel) {
     el('span', { class: 'muted model-left' }, remaining(m) ?? ''));
 }
 
+const ICON_PLAY = '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12-7.5z"/></svg>';
+const icon = (markup: string) => {
+  const t = document.createElement('template');
+  t.innerHTML = markup;
+  return t.content.firstChild;
+};
+
+/** Swaps `node` for a field. Enter or leaving saves, Escape gives up. */
+function startRename(node: HTMLElement, id: string, current: string) {
+  if (state.renaming) return;
+  state.renaming = id;
+  const input = el('input', { class: 'rename', value: current, maxlength: 80, 'aria-label': 'Nom de la campagne' }) as HTMLInputElement;
+  let done = false;
+  const finish = async (save: boolean) => {
+    if (done) return;
+    done = true;
+    if (save && input.value.trim() !== current) await api('rename', { id, name: input.value });
+    state.renaming = null;
+    input.replaceWith(node);
+    await loadCampaigns();
+    if (state.selected === id) renderCampaign(await api<Progress>(`campaign?id=${encodeURIComponent(id)}`));
+  };
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') finish(true);
+    if (e.key === 'Escape') finish(false);
+  });
+  input.addEventListener('blur', () => finish(true));
+  node.replaceWith(input);
+  input.focus();
+  input.select();
+}
+
+async function resumeCampaign(id: string) {
+  try {
+    await api('resume', { id });
+    setTimeout(async () => {
+      await refreshLive();
+      await openCampaign(id);
+    }, 1500);
+  } catch (e) {
+    $('#run-error').textContent = e instanceof Error ? e.message : String(e);
+  }
+}
+
 function renderCampaign(c: Progress) {
+  if (state.renaming) return;
   state.page = c;
   const when = (iso: string) => new Date(iso).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
   $('#campaign').replaceChildren(el('div', { class: 'card' },
-    el('div', { class: 'live-head' }, el('h2', {}, `Campagne ${c.id}`), c.live ? el('button', { class: 'plain', onclick: () => api('stop', {}) }, 'Arrêter (reprise possible)') : null),
+    el('div', { class: 'live-head' }, el('h2', { title: 'Double-cliquer pour renommer', ondblclick: (e) => startRename(e.currentTarget as HTMLElement, c.id, c.name ?? '') }, c.name ?? `Campagne ${c.id}`),
+      c.live ? el('button', { class: 'plain', onclick: () => api('stop', {}) }, 'Arrêter (reprise possible)')
+        : c.status !== 'finished' ? el('button', { class: 'plain with-icon', disabled: Boolean(state.overview?.issues.length), title: state.overview?.issues[0]?.text, onclick: () => resumeCampaign(c.id) }, icon(ICON_PLAY), 'Reprendre') : null),
     el('p', { class: 'muted' }, [`Démarrée le ${when(c.startedAt)}`, c.finishedAt ? `finie le ${when(c.finishedAt)}` : null, `${duration(c.budgetMinutes)} par modèle`, c.machine, `Poney ${c.poney}`, `suite ${c.suite}${c.fullSuite ? '' : ', partielle'}`].filter(Boolean).join(' · ')),
     c.live && c.status !== 'running' ? el('p', {}, c.status) : null,
     el('div', { class: 'model-list' }, ...c.models.map(renderModelRow))));
@@ -325,6 +372,7 @@ function rankingTable(ranking: Ranked[]) {
       el('td', { class: `verdict-${s.verdict}` }, `${s.verdict === 'eliminated' ? '✗ ' : s.verdict === 'passed' ? '✓ ' : s.verdict === 'unevaluated' ? '– ' : '… '}${VERDICTS[s.verdict]}`, s.missing ? el('div', { class: 'muted' }, `${s.missing} essais manquants`) : null),
       el('td', { class: 'num' }, percent(s.simpleRate)),
       el('td', { class: 'num' }, percent(s.complexRate)),
+      el('td', { class: 'num' }, percent(s.slopRate)),
       el('td', { class: 'num' }, seconds(s.speed.medianSimpleMs)),
       el('td', { class: 'num' }, s.speed.firstTokenMs == null ? '—' : `${(s.speed.firstTokenMs / 1000).toFixed(1).replace('.', ',')} s`),
       el('td', { class: 'num' }, s.speed.tps == null ? '—' : `${s.speed.tps} → ${s.speed.tpsLate ?? '—'}`),
@@ -333,7 +381,7 @@ function rankingTable(ranking: Ranked[]) {
   });
   return el('div', { class: 'card' }, el('h2', {}, 'Classement'),
     el('table', {},
-      el('thead', {}, el('tr', {}, el('th', {}, 'Modèle'), el('th', {}, 'Verdict'), ...['Simples', 'Complexes', 'Temps médian', 'Premier token', 'Tokens/s', 'Mémoire', 'Refus'].map((h) => el('th', { class: 'num' }, h)))),
+      el('thead', {}, el('tr', {}, el('th', {}, 'Modèle'), el('th', {}, 'Verdict'), ...['Simples', 'Complexes', 'Slop', 'Temps médian', 'Premier token', 'Tokens/s', 'Mémoire', 'Refus'].map((h) => el('th', { class: 'num' }, h)))),
       el('tbody', {}, ...rows)),
     ...ranking.flatMap((m) => m.summary.reasons.map((r) => el('p', { class: 'verdict-eliminated' }, `✗ ${short(m.model)} : ${r}`))));
 }
@@ -391,11 +439,12 @@ async function showReport(id: string) {
 const campaignStatus = (c: HistoryItem) => (state.live.includes(c.id) ? 'en cours' : c.status === 'finished' ? 'terminée' : c.status === 'stopped' ? 'arrêtée' : 'interrompue');
 
 async function loadCampaigns() {
+  if (state.renaming) return;
   const list = await api<HistoryItem[]>('history');
   const live = (c: HistoryItem) => (state.live.includes(c.id) ? 0 : 1);
   const sorted = list.map((c, i) => ({ c, i })).sort((a, b) => live(a.c) - live(b.c) || a.i - b.i).map(({ c }) => c);
-  $('#campaigns').replaceChildren(...(sorted.length ? sorted.map((c) => el('button', { class: `campaign${c.id === state.selected && state.view === 'history' ? ' on' : ''}`, 'data-id': c.id, onclick: () => openCampaign(c.id) },
-    el('span', { class: 'campaign-id' }, state.live.includes(c.id) ? el('span', { class: 'spinner', 'aria-hidden': 'true' }) : null, c.id),
+  $('#campaigns').replaceChildren(...(sorted.length ? sorted.map((c) => el('button', { class: `campaign${c.id === state.selected && state.view === 'history' ? ' on' : ''}`, 'data-id': c.id, onclick: () => openCampaign(c.id), ondblclick: (e) => startRename(e.currentTarget as HTMLElement, c.id, c.name ?? '') },
+    el('span', { class: 'campaign-id' }, c.name ?? c.id, state.live.includes(c.id) ? el('span', { class: 'spinner', 'aria-hidden': 'true' }) : null),
     el('small', {}, `${c.models.length} modèle${c.models.length > 1 ? 's' : ''} · ${c.trials} essais · ${campaignStatus(c)}${c.fullSuite ? '' : ' · partielle'}`))) : [el('p', { class: 'muted' }, 'Aucune campagne pour l’instant.')]));
   if ($<HTMLSelectElement>('#compare-a').options.length === list.length) return;
   const options = list.map((c) => el('option', { value: c.id }, c.id));

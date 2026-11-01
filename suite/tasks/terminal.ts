@@ -10,6 +10,14 @@ const base = async ({ write, git }: TaskContext) => {
   await git('commit', '-qm', 'first');
 };
 
+const AUTHOR = 'Cam Durand <cam@exemple.fr>';
+const HISTORY = [
+  ['init: squelette du projet', '2024-01-08T09:12:44+01:00'], ['feat: lecture du catalogue', '2024-01-11T18:03:10+01:00'], ['fix: tri des prix\n\nLes prix égaux changeaient d\'ordre.', '2024-02-02T07:41:00+01:00'],
+  ['docs: installation', '2024-02-19T22:15:37+01:00'], ['feat: export CSV', '2024-03-05T11:00:01+01:00'], ['chore: version 1.0', '2024-03-28T16:45:12+01:00'],
+  ['fix: encodage de l\'export', '2024-04-03T08:30:59+02:00'], ['feat: filtres par rayon', '2024-05-14T13:27:18+02:00'], ['refactor: découpe du lecteur', '2024-06-21T19:58:06+02:00'],
+  ['test: cas des rayons vides', '2024-07-09T10:02:33+02:00'], ['fix: filtre insensible à la casse', '2024-08-26T15:19:47+02:00'], ['docs: changelog', '2024-09-30T09:00:00+02:00'],
+] as const;
+
 export default [
   {
     id: 'git-selective-commit', version: 1, category: 'terminal', tier: 'simple', lang: 'fr',
@@ -45,6 +53,35 @@ export default [
       return ok(branch === 'main' && onHotfix === 'ok' && main === 'first' && (await file('a.txt')) === 'work in progress\n' && !stash, `${branch} | ${main}`);
     },
     solve: async ({ git, write }) => { await git('stash'); await git('checkout', '-qb', 'hotfix'); await write('fix.txt', 'ok\n'); await git('add', '.'); await git('commit', '-qm', 'fix'); await git('checkout', '-q', 'main'); await git('stash', 'pop', '-q'); return 'Fait.'; },
+  },
+  {
+    id: 'git-rewrite-author', version: 1, category: 'terminal', tier: 'complex', lang: 'fr',
+    prompt: 'Dans tout l\'historique de main, renomme l\'auteur "Cam Durand" en "Camille Durand". Seul le nom de l\'auteur change : son e-mail, les dates d\'auteur, les messages, le contenu de chaque commit et leur ordre doivent rester identiques, et le tag v1.0 doit rester sur son commit. Ne touche pas au fichier notes.txt, qui n\'est pas suivi.',
+    setup: async ({ write, git }) => {
+      await git('init', '-q');
+      for (const [i, [subject, date]] of HISTORY.entries()) {
+        await write(`src/mod${i}.txt`, `${subject}\n`);
+        await git('add', '.');
+        await git('commit', '-q', '--author', AUTHOR, '--date', date, '-m', subject);
+        if (subject === 'chore: version 1.0') await git('tag', 'v1.0');
+      }
+      await write('notes.txt', 'à garder\n');
+      await write('.hidden/trees', (await git('log', '--reverse', '--format=%T', 'main')) + '\n');
+    },
+    check: async ({ gitOut, file }) => {
+      const log = (await gitOut('log', '--reverse', '--format=%an|%ae|%aI', 'main')).split('\n');
+      const subjects = await gitOut('log', '--reverse', '--format=%B%x00', 'main');
+      const trees = await gitOut('log', '--reverse', '--format=%T', 'main');
+      const tagged = await gitOut('log', '-1', '--format=%s|%an', 'v1.0');
+      const wanted = HISTORY.map(([, date]) => `Camille Durand|cam@exemple.fr|${date}`);
+      const messages = subjects.split('\0').map((m) => m.trim()).filter(Boolean);
+      const same = log.join() === wanted.join() && messages.join() === HISTORY.map(([m]) => m).join() && trees === ((await file('.hidden/trees')) ?? '').trim();
+      return ok(same && tagged === 'chore: version 1.0|Camille Durand' && (await file('notes.txt')) === 'à garder\n', `${log[0]} | ${tagged} | ${log.length} commits`);
+    },
+    solve: async ({ git }) => {
+      await git('filter-branch', '-f', '--env-filter', 'export GIT_AUTHOR_NAME="Camille Durand"', '--tag-name-filter', 'cat', '--', 'main', 'v1.0');
+      return 'Auteur renommé.';
+    },
   },
   {
     id: 'shell-count-todos', version: 1, category: 'terminal', tier: 'simple', lang: 'en',

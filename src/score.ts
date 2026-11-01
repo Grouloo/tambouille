@@ -4,7 +4,7 @@ import type { Assessment, LoadedCampaign, ToolCounters, TrialRecord, Verdict } f
 
 const TOOL_COUNTERS: (keyof ToolCounters)[] = ['calls', 'failedCalls', 'inventedTools', 'repairedAliases', 'loops', 'repeatedActions', 'compactions'];
 /** What a ranking reads of a summary. */
-export interface Rankable { verdict: Verdict; complexRate: number | null; tools: { misuseRate: number | null }; speed: { medianSimpleMs: number | null; firstTokenMs?: number | null } }
+export interface Rankable { verdict: Verdict; complexRate: number | null; tools: { misuseRate: number | null }; slopRate?: number | null; speed: { medianSimpleMs: number | null; firstTokenMs?: number | null } }
 
 const median = (list: (number | null | undefined)[]) => {
   const s = list.filter((x): x is number => x != null).sort((a, b) => a - b);
@@ -13,6 +13,7 @@ const median = (list: (number | null | undefined)[]) => {
   return s.length % 2 ? (s[m] ?? null) : Math.round(((s[m - 1] ?? 0) + (s[m] ?? 0)) / 2);
 };
 const rate = (part: number, whole: number) => (whole ? part / whole : null);
+const CLOSE_SLOP = 0.1; // slop this close is a tie: the tools decide
 const CLOSE_TIME = 0.1; // simple-task times this close are a tie: the first token decides
 const CLOSE = 0.05; // complex success rates this close are a tie: the tool discipline decides
 
@@ -71,6 +72,7 @@ export function summarize(all: TrialRecord[], planned: string[] = []) {
   const direct = assessed.filter((t) => t.assessment.route === 'direct');
   const lookup = assessed.filter((t) => t.assessment.route !== 'direct');
   const success = (list: TrialRecord[]) => rate(list.filter((t) => t.outcome === 'pass').length, list.length);
+  const slop = main.flatMap((t) => (t.slop ? [t.slop.score] : []));
   const language = trials.filter((t) => t.language && t.language.ok !== null);
   return {
     verdict,
@@ -80,6 +82,7 @@ export function summarize(all: TrialRecord[], planned: string[] = []) {
     violations: main.filter((t) => t.outcome === 'violation').length,
     complexRate: rate(complex.filter((t) => t.outcome === 'pass').length, complex.length),
     simpleRate: rate(simple.filter((t) => t.outcome === 'pass').length, simple.length),
+    slopRate: slop.length ? slop.reduce((a, b) => a + b, 0) / slop.length : null,
     byCategory,
     speed: {
       medianSimpleMs: median(simple.map((t) => t.durationMs)),
@@ -115,7 +118,7 @@ export function summarize(all: TrialRecord[], planned: string[] = []) {
 
 const ORDER = { passed: 0, provisional: 1, eliminated: 2, unevaluated: 3 };
 
-/** `items`: [{ summary, ... }]. The gate first, then the complex tasks, then the tools, then the time and the first token. */
+/** `items`: [{ summary, ... }]. The gate first, then the complex tasks, then the slop, then the tools, then the time and the first token. */
 export function rank<T extends { summary: Rankable }>(items: T[]) {
   return [...items].sort((a, b) => {
     const A = a.summary;
@@ -123,6 +126,7 @@ export function rank<T extends { summary: Rankable }>(items: T[]) {
     if (A.verdict !== B.verdict) return ORDER[A.verdict] - ORDER[B.verdict];
     const dc = (B.complexRate ?? -1) - (A.complexRate ?? -1);
     if (Math.abs(dc) > CLOSE) return dc;
+    if (A.slopRate != null && B.slopRate != null && Math.abs(A.slopRate - B.slopRate) > CLOSE_SLOP) return A.slopRate - B.slopRate;
     const dt = (A.tools.misuseRate ?? 1) - (B.tools.misuseRate ?? 1);
     if (dt) return dt;
     const ta = A.speed.medianSimpleMs ?? Infinity;

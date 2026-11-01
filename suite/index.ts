@@ -11,7 +11,7 @@ import terminal from './tasks/terminal.ts';
 import thinking from './tasks/thinking.ts';
 import writing from './tasks/writing.ts';
 
-export const SUITE_VERSION = { major: 1, label: '1-draft' };
+export const SUITE_VERSION = { major: 2, label: '2-draft' };
 export const TASKS: Task[] = [...research, ...code, ...terminal, ...writing, ...thinking, ...harness, ...metacognition, ...rules, ...censorship];
 
 /** The tasks of a campaign. `categories` and `ids` narrow it; a narrowed suite gives no final verdict. */

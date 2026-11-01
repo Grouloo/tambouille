@@ -82,6 +82,9 @@ describe('verdicts', () => {
     expect(out.map((x) => [x.summary.verdict, x.summary.complexRate])).toEqual([['passed', 0.9], ['passed', 0.5], ['provisional', 1], ['eliminated', 1]]);
   });
   test('close complex rates: the cleaner use of tools wins', () => {
+    const withSlop = (slopRate: number) => ({ summary: { ...summary('passed', 1, 0).summary, slopRate } });
+    expect(rank([withSlop(0.8), withSlop(0.2)])[0]?.summary.slopRate).toBe(0.2);
+    expect(rank([withSlop(0.25), withSlop(0.2)])[0]?.summary.slopRate).toBe(0.25);
     const first = (ms: number, firstTokenMs: number) => ({ summary: { verdict: 'passed' as const, complexRate: 1, tools: { misuseRate: 0 }, speed: { medianSimpleMs: ms, firstTokenMs } } });
     expect(rank([first(1000, 900), first(1050, 200)])[0].summary.speed.firstTokenMs).toBe(200);
     expect(rank([first(1000, 900), first(2000, 200)])[0].summary.speed.firstTokenMs).toBe(900);

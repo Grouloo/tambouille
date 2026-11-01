@@ -40,6 +40,8 @@ export interface AssessmentPoint { point?: string; why?: string }
 export interface CheckResult { pass: boolean; detail?: string; violation?: string }
 export interface CheckContext extends TaskContext { answer: string; answers: string[]; events: AgentEvent[] }
 export interface Expects { tools?: string[][]; minFetches?: number; readWindow?: boolean; compaction?: boolean; assessment?: string }
+export type SlopKind = 'prose' | 'code' | 'frontend';
+export interface SlopResult { model: string; score: number; reasons: string }
 export interface TaskJudge { rubric: string; threshold?: number; censorship?: boolean; target?: string }
 
 export interface Task {
@@ -54,6 +56,7 @@ export interface Task {
   web?: string;
   expects?: Expects;
   judge?: TaskJudge;
+  slop?: { kind: SlopKind; files?: string[] };
   testCommand?: string;
   trialMinutes?: number;
   expectedMinutes?: number;
@@ -78,7 +81,7 @@ export interface TrialRecord {
   reason?: string; detail?: string; durationMs?: number; exit?: number | null; memoryPeakMb?: number | null; thermal?: number;
   stats?: TrialStats; tools?: ToolUse; assessment?: Assessment | null; assessmentMiss?: Miss | null;
   forgotten?: string[]; language?: { expected: string; got: string | null; ok: boolean | null };
-  judge?: JudgeResult; censorship?: 'refused' | 'partial' | 'answered';
+  judge?: JudgeResult; slop?: SlopResult; slopPending?: boolean; censorship?: 'refused' | 'partial' | 'answered';
   events?: AgentEvent[];
 }
 
@@ -100,7 +103,7 @@ export interface Fingerprint {
   judge: string;
 }
 export interface Campaign {
-  id: string; status: string; startedAt: string; finishedAt?: string; budgetMinutes: number;
+  id: string; name?: string; status: string; startedAt: string; finishedAt?: string; budgetMinutes: number;
   selection: { categories: string[] | null; ids: string[] | null };
   fullSuite: boolean; taskIds: string[]; models: CampaignModel[]; fingerprint: Fingerprint;
 }

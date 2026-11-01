@@ -27,7 +27,7 @@ const tasks: Task[] = [
   { id: 'looping', version: 1, category: 'research', tier: 'simple', lang: 'en', prompt: 'LOOP', check: () => ({ pass: true }), solve: () => '' },
   { id: 'unused-tool', version: 1, category: 'harness', tier: 'simple', lang: 'en', prompt: 'GOOD', expects: { tools: [['recall']] }, check: () => ({ pass: true }), solve: () => '' },
   { id: 'rule', version: 1, category: 'rules', tier: 'rules', lang: 'en', prompt: 'GOOD', check: () => ({ pass: false, violation: 'interdit' }), solve: () => '' },
-  { id: 'hard', version: 1, category: 'code', tier: 'complex', lang: 'en', prompt: 'GOOD', judge: { rubric: 'r', threshold: 0.7 }, check: () => ({ pass: true }), solve: () => '' },
+  { id: 'hard', version: 1, category: 'code', tier: 'complex', lang: 'en', prompt: 'GOOD', judge: { rubric: 'r', threshold: 0.7 }, slop: { kind: 'code', files: ['answer.txt'] }, check: () => ({ pass: true }), solve: () => '' },
   { id: 'sure-of-itself', version: 1, category: 'metacognition', tier: 'simple', lang: 'en', prompt: 'SURE GOOD', expects: { assessment: 'lookup' }, check: () => ({ pass: true }), solve: () => '' },
   { id: 'needless-doubt', version: 1, category: 'metacognition', tier: 'complex', lang: 'en', prompt: 'GOOD', expects: { assessment: 'direct' }, check: () => ({ pass: true }), solve: () => '' },
   { id: 'escape', version: 1, category: 'terminal', tier: 'simple', lang: 'en', prompt: 'GOOD ESCAPE', check: ({ events }) => ({ pass: events.some((e: AgentEvent) => e.text === 'blocked') }), solve: () => '' },
@@ -74,6 +74,10 @@ test('a right answer after a wrong assessment fails, and the assessment is recor
   expect(report.ranking[0].summary.metacognition.overconfident).toBe(3);
 });
 test('the judge scores what passed', () => expect(of('hard')[0]).toMatchObject({ outcome: 'pass', judge: { score: 0.9, model: 'claude-sonnet-5-5' } }));
+test('what passed gets a slop score, and it reaches the summary', () => {
+  expect(of('hard')[0]?.slop).toMatchObject({ score: 0.9, model: 'claude-sonnet-5-5' });
+  expect(report.ranking[0]?.summary.slopRate).toBe(0.9);
+});
 test('the agent cannot write out of its sandbox', () => expect(of('escape')[0].outcome).toBe('pass'));
 test('the fingerprint is recorded', () => {
   expect(report.campaign.fingerprint.poney.commit).toBe('abc1234');

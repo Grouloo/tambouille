@@ -10,13 +10,13 @@ import { fitBudget, planTrials } from './plan.ts';
 import { poneyModels, readSettings } from './poney.ts';
 import { progressOf, transcriptFor } from './progress.ts';
 import { compare } from './score.ts';
-import { listCampaigns, loadCampaign } from './store.ts';
+import { listCampaigns, loadCampaign, renameCampaign } from './store.ts';
 import { message } from './types.ts';
 import type { Measured } from './plan.ts';
 import type { LiveCampaign, Tier } from './types.ts';
 import { TASKS, selectTasks } from '../suite/index.ts';
 
-export interface Selection { models?: string[]; categories?: string[]; ids?: string[]; budgetMinutes?: number; reference?: boolean }
+export interface Selection { id?: string; name?: string; models?: string[]; categories?: string[]; ids?: string[]; budgetMinutes?: number; reference?: boolean }
 
 const UI = path.join(import.meta.dir, 'ui');
 const TYPES: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
@@ -55,18 +55,22 @@ async function estimate({ models = [], categories, ids, budgetMinutes = PROTOCOL
   return { tasks: tasks.length, fullSuite: tasks.length === TASKS.length, models: out };
 }
 
-async function startCampaign({ models, categories, ids, budgetMinutes, reference }: Selection) {
+async function launch(args: string[]) {
   if ((await liveCampaigns()).length) throw new Error('Une campagne tourne déjà.');
-  const args = ['src/cli.ts', 'run', '--budget', `${budgetMinutes}m`];
+  await fs.mkdir(path.join(DATA, 'logs'), { recursive: true });
+  const log = path.join(DATA, 'logs', `${Date.now()}.log`);
+  const p = Bun.spawn([process.execPath, 'src/cli.ts', ...args], { cwd: ROOT, stdout: Bun.file(log), stderr: Bun.file(log), stdin: 'ignore', detached: true });
+  p.unref();
+  return { pid: p.pid, log };
+}
+
+function startCampaign({ models, categories, ids, budgetMinutes, reference }: Selection) {
+  const args = ['run', '--budget', `${budgetMinutes}m`];
   if (models?.length) args.push('--models', models.join(','));
   if (categories?.length) args.push('--categories', categories.join(','));
   if (ids?.length) args.push('--tasks', ids.join(','));
   if (reference) args.push('--reference');
-  await fs.mkdir(path.join(DATA, 'logs'), { recursive: true });
-  const log = path.join(DATA, 'logs', `${Date.now()}.log`);
-  const p = Bun.spawn([process.execPath, ...args], { cwd: ROOT, stdout: Bun.file(log), stderr: Bun.file(log), stdin: 'ignore', detached: true });
-  p.unref();
-  return { pid: p.pid, log };
+  return launch(args);
 }
 
 async function overview() {
@@ -77,14 +81,15 @@ async function overview() {
 }
 
 async function historyList() {
-  return (await listCampaigns()).map((c) => ({ id: c.id, status: c.status, startedAt: c.startedAt, models: c.models.map((m) => m.id), fullSuite: c.fullSuite, trials: c.trials.length, poney: c.fingerprint.poney.commit?.slice(0, 7), machine: `${c.fingerprint.machine.chip} · ${c.fingerprint.machine.memoryGb} Go` }));
+  return (await listCampaigns()).map((c) => ({ id: c.id, name: c.name, status: c.status, startedAt: c.startedAt, models: c.models.map((m) => m.id), fullSuite: c.fullSuite, trials: c.trials.length, poney: c.fingerprint.poney.commit?.slice(0, 7), machine: `${c.fingerprint.machine.chip} · ${c.fingerprint.machine.memoryGb} Go` }));
 }
 
-const campaignId = (url: URL) => {
-  const id = url.searchParams.get('id') ?? '';
+const knownId = (id = '') => {
   if (!/^[\w-]+$/.test(id)) throw new Error('Campagne inconnue.');
   return id;
 };
+
+const campaignId = (url: URL) => knownId(url.searchParams.get('id') ?? '');
 
 const ROUTES: Record<string, (url: URL, body: Selection) => unknown> = {
   'GET /api/overview': () => overview(),
@@ -99,6 +104,14 @@ const ROUTES: Record<string, (url: URL, body: Selection) => unknown> = {
   'GET /api/compare': async (url) => compare(await loadCampaign(url.searchParams.get('a') ?? ''), await loadCampaign(url.searchParams.get('b') ?? '')),
   'POST /api/estimate': (_, body) => estimate(body),
   'POST /api/run': (_, body) => startCampaign(body),
+  'POST /api/resume': (_, body) => {
+    const id = knownId(body.id);
+    return launch(['resume', id]);
+  },
+  'POST /api/rename': async (_, body) => {
+    await renameCampaign(knownId(body.id), body.name ?? '');
+    return { ok: true };
+  },
   'POST /api/unload': () => unloadOthers().then(() => ({ ok: true })),
   'POST /api/stop': async () => {
     for (const c of await liveCampaigns()) process.kill(c.pid, 'SIGTERM');

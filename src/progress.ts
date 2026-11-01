@@ -61,7 +61,7 @@ const parseKey = (key: string) => {
 };
 
 /** One planned trial per row; a trial that ran outside the plan is kept too. */
-export function trialRows(keys: string[], trials: Pick<TrialRecord, 'key' | 'outcome' | 'reason' | 'detail' | 'durationMs' | 'category' | 'tier' | 'judge'>[], current?: string | null) {
+export function trialRows(keys: string[], trials: Pick<TrialRecord, 'key' | 'outcome' | 'reason' | 'detail' | 'durationMs' | 'category' | 'tier' | 'judge' | 'slop'>[], current?: string | null) {
   const byKey = new Map(trials.map((t) => [t.key, t]));
   return [...new Set([...keys, ...byKey.keys()])].map((key) => {
     const t = byKey.get(key);
@@ -70,7 +70,7 @@ export function trialRows(keys: string[], trials: Pick<TrialRecord, 'key' | 'out
     return {
       key, task, numCtx, rep, category: t?.category ?? known?.category ?? '?', tier: t?.tier ?? known?.tier ?? '?',
       state: t?.outcome ?? (key === current ? 'running' : 'pending'),
-      reason: t?.reason, detail: t?.detail, durationMs: t?.durationMs, judge: t?.judge?.score,
+      reason: t?.reason, detail: t?.detail, durationMs: t?.durationMs, judge: t?.judge?.score, slop: t?.slop?.score,
     };
   });
 }
@@ -134,7 +134,7 @@ export async function progressOf(id: string, live: LiveCampaign | null = null) {
   }
   const f = saved.fingerprint;
   return {
-    id, live: Boolean(live), status: live?.status ?? saved.status, startedAt: saved.startedAt, finishedAt: saved.finishedAt, budgetMinutes: saved.budgetMinutes, fullSuite: saved.fullSuite,
+    id, name: saved.name, live: Boolean(live), status: live?.status ?? saved.status, startedAt: saved.startedAt, finishedAt: saved.finishedAt, budgetMinutes: saved.budgetMinutes, fullSuite: saved.fullSuite,
     machine: `${f.machine.chip}, ${f.machine.memoryGb} Go`, poney: f.poney.commit?.slice(0, 7), suite: f.suite.label, models,
   };
 }

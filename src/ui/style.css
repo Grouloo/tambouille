@@ -64,8 +64,8 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .campaign small { display: block; color: var(--text-2); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .icon { flex: none; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .links button, .primary { display: inline-flex; align-items: center; gap: 8px; }
-.campaign-id { display: flex; align-items: center; gap: 7px; font-variant-numeric: tabular-nums; }
-.spinner { flex: none; width: 10px; height: 10px; border: 2px solid color-mix(in srgb, var(--accent) 25%, transparent); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
+.campaign-id { display: flex; align-items: center; justify-content: space-between; gap: 8px; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.spinner { flex: none; width: 18px; height: 18px; border: 3px solid color-mix(in srgb, var(--accent) 25%, transparent); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spinner { animation: none; border-color: var(--accent); } }
 .progress { height: 6px; background: var(--grid); border-radius: 4px; margin: 6px 0 12px; }
@@ -123,6 +123,9 @@ button.small { padding: 2px 7px; font-size: 12px; }
 .entry summary { cursor: pointer; }
 .entry.failed { color: var(--bad); }
 .entry pre { margin: 6px 0 0; padding: 8px; max-height: 320px; overflow: auto; border-radius: 6px; background: var(--surface-2); color: var(--text); font: 12px/1.45 ui-monospace, Menlo, monospace; white-space: pre-wrap; }
+.rename { width: 100%; padding: 5px 8px; border: 1px solid var(--accent); border-radius: 6px; background: var(--surface); color: var(--text); font: inherit; }
+button.with-icon { display: inline-flex; align-items: center; gap: 6px; }
+button.plain:disabled { opacity: .5; cursor: not-allowed; }
 #tooltip { box-shadow: var(--shadow); position: fixed; pointer-events: none; background: var(--surface); border: 1px solid var(--border); border-radius: 7px; padding: 6px 10px; font-size: 13px; box-shadow: 0 2px 8px #0002; }
 #tooltip strong { display: block; }
 @media (max-width: 860px) {

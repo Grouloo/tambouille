@@ -13,6 +13,7 @@ Tasks live in `suite/tasks/`. A task is a plain object:
   setup: async (t) => {},     // prepares the folder, on the host, before the agent exists
   expects: { tools: [['search'], ['recall', 'remember']] },  // uses required: all groups, any tool of a group
   judge: { rubric: '…', threshold: 0.7, target: 'report.md' },
+  slop: { kind: 'prose', files: ['report.md'] }, // prose, code or frontend; without files, the answer
   check: async (t) => ({ pass: true, detail: '…' }),
   solve: async (t) => 'the answer',  // a reference solution, for the tests
 }

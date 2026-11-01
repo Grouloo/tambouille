@@ -10,12 +10,13 @@ import { expectedMinutes, planTrials, trialKey } from './plan.ts';
 import { engineCopy, poneyModels, poneyVersion, readSettings, startEngine } from './poney.ts';
 import { canary } from './sandbox.ts';
 import { summarize } from './score.ts';
+import { gradeSlop } from './slop.ts';
 import { appendRecord, livePath, listCampaigns, loadCampaign, newCampaignId, saveCampaign, saveRecords } from './store.ts';
 import { replayed, runTrial } from './trial.ts';
 import { message } from './types.ts';
 import type { Measured } from './plan.ts';
 import type { Engine } from './poney.ts';
-import type { Campaign, CampaignModel, LiveCampaign, LiveModel, PoneyModel, ProbeRecord, RunRecord, TrialRecord } from './types.ts';
+import type { Campaign, CampaignModel, LiveCampaign, LiveModel, PoneyModel, ProbeRecord, RunRecord, SlopKind, TrialRecord } from './types.ts';
 import { selectTasks, SUITE_VERSION, TASKS } from '../suite/index.ts';
 
 const median = (l: number[]) => [...l].sort((a, b) => a - b)[Math.floor(l.length / 2)] ?? 0;
@@ -254,6 +255,15 @@ export async function rejudge(id: string, { log = console.log }: { log?: (line: 
       t.outcome = t.censorship === 'answered' ? 'pass' : 'fail';
     } else t.outcome = v.score < (task.judge.threshold ?? 0) ? 'fail' : 'pass';
     delete t.reason;
+    await fs.rm(file, { force: true });
+    changed++;
+  }
+  for (const t of campaign.trials.filter((x) => x.slopPending)) {
+    const file = path.join(pending, `${t.key.replace(/[^\w.@#-]+/g, '_')}.slop.json`);
+    const data = (await Bun.file(file).json().catch(() => null)) as { prompt: string; kind: SlopKind; text: string } | null;
+    if (!data) continue;
+    t.slop = await gradeSlop(data);
+    delete t.slopPending;
     await fs.rm(file, { force: true });
     changed++;
   }
