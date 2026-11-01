@@ -72,6 +72,8 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .progress { height: 6px; background: var(--grid); border-radius: 4px; margin: 6px 0 12px; }
 .progress div { height: 100%; background: var(--accent); border-radius: 4px; }
 .pickers { display: flex; gap: 18px; margin-bottom: 16px; }
+#compare-models-box { margin-bottom: 16px; }
+[hidden] { display: none !important; }
 select { font: inherit; padding: 4px; max-width: 320px; }
 svg text { fill: var(--text-2); font-size: 12px; }
 svg .label { fill: var(--text); }

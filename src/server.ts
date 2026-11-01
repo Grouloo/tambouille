@@ -9,8 +9,8 @@ import { machineIssues, unloadOthers } from './machine.ts';
 import { fitBudget, planTrials } from './plan.ts';
 import { poneyModels, readSettings } from './poney.ts';
 import { progressOf, transcriptFor } from './progress.ts';
-import { compare } from './score.ts';
-import { deleteCampaign, listCampaigns, loadCampaign, renameCampaign } from './store.ts';
+import { comparison } from './score.ts';
+import { deleteCampaign, listCampaigns, renameCampaign } from './store.ts';
 import { message } from './types.ts';
 import type { Measured } from './plan.ts';
 import type { LiveCampaign, Tier } from './types.ts';
@@ -101,7 +101,11 @@ const ROUTES: Record<string, (url: URL, body: Selection) => unknown> = {
   'GET /api/transcript': (url) => transcriptFor(campaignId(url), url.searchParams.get('model') ?? '', url.searchParams.get('key') ?? ''),
   'GET /api/history': () => historyList(),
   'GET /api/report': (url) => campaignReport(campaignId(url)),
-  'GET /api/compare': async (url) => compare(await loadCampaign(url.searchParams.get('a') ?? ''), await loadCampaign(url.searchParams.get('b') ?? '')),
+  'GET /api/comparison': async (url) => {
+    const live = (await liveCampaigns()).map((c) => c.id);
+    const finished = (await listCampaigns()).filter((c) => !live.includes(c.id));
+    return comparison(finished, { machine: url.searchParams.get('machine'), without: url.searchParams.getAll('without') });
+  },
   'POST /api/estimate': (_, body) => estimate(body),
   'POST /api/run': (_, body) => startCampaign(body),
   'POST /api/resume': (_, body) => {

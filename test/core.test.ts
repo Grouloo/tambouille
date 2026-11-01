@@ -4,7 +4,7 @@ import { parseVerdict, judgePrompt } from '../src/judge.ts';
 import { fitBudget, planTrials, trialKey } from '../src/plan.ts';
 import { trialSettings } from '../src/poney.ts';
 import { profile } from '../src/sandbox.ts';
-import { compare, gate, rank, summarize } from '../src/score.ts';
+import { compare, comparison, gate, rank, summarize } from '../src/score.ts';
 import { missingTools } from '../src/trial.ts';
 import { search } from '../src/fakeweb.ts';
 import { publicJson } from '../src/store.ts';
@@ -103,6 +103,30 @@ describe('compare', () => {
   test('another machine is not a direct comparison', () => {
     expect(compare(as<LoadedCampaign>({ fingerprint: fp('a', 'M1'), trials: [] }), as<LoadedCampaign>({ fingerprint: fp('a'), trials: [] })).direct).toBe(false);
   });
+});
+
+describe('comparison', () => {
+  const fp = (commit: string, chip = 'M4') => ({ machine: { chip, memoryGb: 24 }, suite: { major: 1 }, poney: { commit, systemPromptHash: 'p', engineBuild: 'b' } });
+  const on = (model: string, task: string, outcome: Outcome) => ({ ...trial(task, outcome), model, at: '2026-01-01' });
+  const campaign = (id: string, startedAt: string, fingerprint: unknown, models: string[], trials: unknown[]) => as<LoadedCampaign>({ id, startedAt, fingerprint, fullSuite: true, probes: [], models: models.map((m) => ({ id: m })), trials });
+  const campaigns = [
+    campaign('old', '2026-01-01', fp('aaa'), ['x', 'y'], [on('x', 'a', 'fail'), on('y', 'a', 'pass'), on('y', 'b', 'pass')]),
+    campaign('new', '2026-02-01', fp('bbb'), ['x', 'y'], [on('x', 'a', 'pass'), on('x', 'b', 'pass')]),
+    campaign('elsewhere', '2026-03-01', fp('aaa', 'M1'), ['z'], [on('z', 'a', 'pass')]),
+  ];
+  test('each model on its latest evaluation, on the chosen machine only', () => {
+    const c = comparison(campaigns, { machine: 'M4 · 24 Go' });
+    expect(c.machines).toEqual(['M1 · 24 Go', 'M4 · 24 Go']);
+    expect(c.models.sort()).toEqual(['x', 'y']);
+    expect(Object.fromEntries(c.ranking.map((m) => [m.model, m.campaign]))).toEqual({ x: 'new', y: 'old' }); // (y played nothing in 'new')
+    expect(c.warnings.join()).toContain('Poney');
+  });
+  test('rates are on the tasks shared by the models kept', () => {
+    const both = comparison(campaigns, { machine: 'M4 · 24 Go' });
+    expect(both.commonTasks).toBe(2);
+    expect(comparison(campaigns, { machine: 'M4 · 24 Go', without: ['y'] })).toMatchObject({ commonTasks: 2, warnings: [], models: expect.arrayContaining(['x', 'y']) });
+  });
+  test('the most recent machine comes first', () => expect(comparison(campaigns).machine).toBe('M1 · 24 Go'));
 });
 
 describe('analysis of a run', () => {

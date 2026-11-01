@@ -143,7 +143,9 @@ corrected) are searched in the text, and the judge grades the depth.
 ## Comparison over time
 
 Each campaign records the machine, the OS, Poney's commit and system prompt hash, the engine build, each model's
-sha256, a hash of the settings, the suite version and the judge. Comparison is direct only on the same machine and
+sha256, a hash of the settings, the suite version and the judge. The compare page takes every model on one machine
+configuration (chip and memory), each on its latest finished evaluation that played something, whatever the campaign.
+Comparison is direct only on the same machine and
 major suite version, and only on tasks in common, at the same task version. If Poney changed, there is a warning,
 and `--reference` replays the reference model to measure what the change did on its own.
 

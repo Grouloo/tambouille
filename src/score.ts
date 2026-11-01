@@ -1,6 +1,6 @@
 // From trials to a verdict. No average over everything: a gate, then a ranking.
 // See docs/design.md, "Scoring".
-import type { Assessment, LoadedCampaign, ToolCounters, TrialRecord, Verdict } from './types.ts';
+import type { Assessment, Campaign, CampaignModel, Fingerprint, LoadedCampaign, ToolCounters, TrialRecord, Verdict } from './types.ts';
 
 const TOOL_COUNTERS: (keyof ToolCounters)[] = ['calls', 'failedCalls', 'inventedTools', 'repairedAliases', 'loops', 'repeatedActions', 'compactions'];
 /** What a ranking reads of a summary. */
@@ -138,6 +138,13 @@ export function rank<T extends { summary: Rankable }>(items: T[]) {
   });
 }
 
+const taskKey = (t: TrialRecord) => `${t.task}:${t.taskVersion}`;
+const scoredTasks = (list: TrialRecord[]) => new Set(list.filter((t) => t.primary && t.outcome !== 'infra' && t.outcome !== 'invalid').map(taskKey));
+const passRateOn = (list: TrialRecord[], tasks: Set<string>) => {
+  const kept = list.filter((t) => t.primary && tasks.has(taskKey(t)) && ['pass', 'fail', 'violation'].includes(t.outcome));
+  return rate(kept.filter((t) => t.outcome === 'pass').length, kept.length);
+};
+
 /**
  * Two campaigns of one model or two models, on the tasks they share. Only a same
  * machine and suite compare directly; a changed Poney is a warning.
@@ -151,13 +158,52 @@ export function compare(a: LoadedCampaign, b: LoadedCampaign) {
   if (fa.poney.commit !== fb.poney.commit) warnings.push(`Poney a changé (${fa.poney.commit?.slice(0, 7)} → ${fb.poney.commit?.slice(0, 7)}) : regarder le modèle de référence.`);
   if (fa.poney.systemPromptHash !== fb.poney.systemPromptHash) warnings.push('Le prompt système a changé.');
   if (fa.poney.engineBuild !== fb.poney.engineBuild) warnings.push('Le moteur a changé : les vitesses ne se comparent plus.');
-  const key = (t: TrialRecord) => `${t.task}:${t.taskVersion}`;
-  const seen = (list: TrialRecord[]) => new Set(list.filter((t) => t.primary && t.outcome !== 'infra' && t.outcome !== 'invalid').map(key));
-  const sa = seen(a.trials);
-  const common = [...seen(b.trials)].filter((k) => sa.has(k));
-  const passRate = (list: TrialRecord[]) => {
-    const kept = list.filter((t) => t.primary && common.includes(key(t)) && ['pass', 'fail', 'violation'].includes(t.outcome));
-    return rate(kept.filter((t) => t.outcome === 'pass').length, kept.length);
+  const sa = scoredTasks(a.trials);
+  const common = new Set([...scoredTasks(b.trials)].filter((k) => sa.has(k)));
+  return { direct, warnings, commonTasks: common.size, a: passRateOn(a.trials, common), b: passRateOn(b.trials, common) };
+}
+
+/** One model's results in one campaign. */
+export function evaluation(campaign: LoadedCampaign, m: CampaignModel) {
+  const trials = campaign.trials.filter((t) => t.model === m.id);
+  const summary = summarize(trials, m.planned ?? []);
+  if (!campaign.fullSuite && summary.verdict === 'passed') summary.verdict = 'provisional';
+  return { model: m.id, mainCtx: m.mainCtx, reducedContext: m.reducedContext, probes: campaign.probes.filter((p) => p.model === m.id), summary };
+}
+
+const machineOf = ({ fingerprint: { machine } }: Campaign) => `${machine.chip} · ${machine.memoryGb} Go`;
+
+/**
+ * Every model on one machine configuration, each on its latest campaign that played something.
+ * `without`: models left out, which also leaves their tasks out of the tasks in common.
+ */
+export function comparison(campaigns: LoadedCampaign[], { machine, without = [] }: { machine?: string | null; without?: string[] } = {}) {
+  const recent = [...campaigns].sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+  const machines = [...new Set(recent.map(machineOf))];
+  const chosen = machines.find((m) => m === machine) ?? machines[0] ?? null;
+  const latest = new Map<string, { campaign: LoadedCampaign; item: ReturnType<typeof evaluation> }>();
+  for (const campaign of recent.filter((c) => machineOf(c) === chosen)) {
+    for (const m of campaign.models) {
+      const item = evaluation(campaign, m);
+      if (!latest.has(m.id) && item.summary.verdict !== 'unevaluated') latest.set(m.id, { campaign, item });
+    }
+  }
+  const compared = [...latest.values()].filter(({ item }) => !without.includes(item.model));
+  const trialsOf = ({ campaign, item }: typeof compared[number]) => campaign.trials.filter((t) => t.model === item.model);
+  const [first, ...others] = compared.map((e) => scoredTasks(trialsOf(e)));
+  const common = new Set([...(first ?? [])].filter((k) => others.every((s) => s.has(k))));
+  const distinct = (read: (f: Fingerprint) => unknown) => new Set(compared.map((e) => read(e.campaign.fingerprint))).size > 1;
+  const warnings = [];
+  if (distinct((f) => f.suite.major)) warnings.push('Versions de suite différentes : comparaison indicative seulement.');
+  if (distinct((f) => f.poney.commit)) warnings.push('Ces évaluations n’ont pas toutes été faites avec la même version de Poney.');
+  if (distinct((f) => f.poney.systemPromptHash)) warnings.push('Le prompt système diffère entre ces évaluations.');
+  if (distinct((f) => f.poney.engineBuild)) warnings.push('Le moteur diffère entre ces évaluations : les vitesses ne se comparent plus.');
+  return {
+    machines,
+    machine: chosen,
+    models: [...latest.keys()],
+    warnings,
+    commonTasks: common.size,
+    ranking: rank(compared.map((e) => ({ ...e.item, campaign: e.campaign.id, campaignName: e.campaign.name, startedAt: e.campaign.startedAt, poney: e.campaign.fingerprint.poney.commit, commonRate: passRateOn(trialsOf(e), common) }))),
   };
-  return { direct, warnings, commonTasks: common.length, a: passRate(a.trials), b: passRate(b.trials) };
 }

@@ -9,7 +9,6 @@ import { machineFingerprint, machineIssues, pressure, sampleMemory, stayAwake, w
 import { expectedMinutes, planTrials, trialKey } from './plan.ts';
 import { engineCopy, poneyModels, poneyVersion, readSettings, startEngine } from './poney.ts';
 import { canary } from './sandbox.ts';
-import { summarize } from './score.ts';
 import { gradeSlop } from './slop.ts';
 import { appendRecord, livePath, listCampaigns, loadCampaign, freshCampaignId, saveCampaign, saveRecords } from './store.ts';
 import { replayed, runTrial } from './trial.ts';
@@ -281,14 +280,8 @@ export async function rejudge(id: string, { log = console.log }: { log?: (line: 
 
 /** The ranking of a campaign, as the UI and `bench report` show it. */
 export async function campaignReport(id: string) {
-  const { rank } = await import('./score.ts');
+  const { evaluation, rank } = await import('./score.ts');
   const campaign = await loadCampaign(id);
-  const items = campaign.models.map((m) => {
-    const trials = campaign.trials.filter((t) => t.model === m.id);
-    const summary = summarize(trials, m.planned ?? []);
-    if (!campaign.fullSuite && summary.verdict === 'passed') summary.verdict = 'provisional';
-    return { model: m.id, mainCtx: m.mainCtx, reducedContext: m.reducedContext, probes: campaign.probes.filter((p) => p.model === m.id), summary };
-  });
-  return { campaign, ranking: rank(items) };
+  return { campaign, ranking: rank(campaign.models.map((m) => evaluation(campaign, m))) };
 }
 

@@ -1,7 +1,7 @@
 import type { campaignReport } from '../campaign.ts';
 import type { MachineIssue } from '../machine.ts';
 import type { Progress, ProgressModel, Step, TranscriptEntry, TrialRow } from '../progress.ts';
-import type { compare } from '../score.ts';
+import type { comparison } from '../score.ts';
 import type { ProbeRecord } from '../types.ts';
 
 type Attrs = Record<string, string | number | boolean | null | undefined | ((event: Event) => void)>;
@@ -43,7 +43,7 @@ const gigas = (mb: number | null | undefined) => (mb == null ? '—' : `${(mb / 
 const duration = (m: number) => (m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? ` ${String(m % 60).padStart(2, '0')}` : ''}`);
 const short = (id: string) => id.replace(/-(it|a\d+b)-.*$/, '');
 
-const state: { renaming: string | null; pausing: string | null; overview: Overview | null; view: string; selected: string | null; live: string[]; page: Progress | null; panel: string | null; transcript: { key: string; task: string; running: boolean } | null } = { renaming: null, pausing: null, overview: null, view: 'launch', selected: null, live: [], page: null, panel: null, transcript: null };
+const state: { compareOff: Set<string>; renaming: string | null; pausing: string | null; overview: Overview | null; view: string; selected: string | null; live: string[]; page: Progress | null; panel: string | null; transcript: { key: string; task: string; running: boolean } | null } = { compareOff: new Set(), renaming: null, pausing: null, overview: null, view: 'launch', selected: null, live: [], page: null, panel: null, transcript: null };
 
 // ---------- launch ----------
 function renderIssues(issues: MachineIssue[]) {
@@ -481,11 +481,6 @@ async function loadCampaigns() {
   $('#campaigns').replaceChildren(...(sorted.length ? sorted.map((c) => el('button', { class: `campaign${c.id === state.selected && state.view === 'history' ? ' on' : ''}`, 'data-id': c.id, onclick: () => openCampaign(c.id), ondblclick: (e) => startRename(e.currentTarget as HTMLElement, c.id, c.name ?? '') },
     el('span', { class: 'campaign-id' }, c.name ?? c.id, state.live.includes(c.id) ? el('span', { class: 'spinner', 'aria-hidden': 'true' }) : null),
     el('small', {}, `${c.models.length} modèle${c.models.length > 1 ? 's' : ''} · ${c.trials} essais · ${campaignStatus(c)}${c.fullSuite ? '' : ' · partielle'}`))) : [el('p', { class: 'muted' }, 'Aucune campagne pour l’instant.')]));
-  if ($<HTMLSelectElement>('#compare-a').options.length === list.length) return;
-  const options = list.map((c) => el('option', { value: c.id }, c.id));
-  $('#compare-a').replaceChildren(...options.map((o) => o.cloneNode(true)));
-  $('#compare-b').replaceChildren(...options);
-  if (list.length > 1) $<HTMLSelectElement>('#compare-b').value = list[1]?.id ?? '';
 }
 
 async function openCampaign(id: string) {
@@ -500,22 +495,39 @@ async function openCampaign(id: string) {
 }
 
 async function showComparison() {
-  const a = $<HTMLSelectElement>('#compare-a').value;
-  const b = $<HTMLSelectElement>('#compare-b').value;
+  const query = new URLSearchParams();
+  const picked = $<HTMLSelectElement>('#compare-machine').value;
+  if (picked) query.set('machine', picked);
+  for (const model of state.compareOff) query.append('without', model);
+  const c = await api<ReturnType<typeof comparison>>(`comparison?${query}`);
+  const select = $<HTMLSelectElement>('#compare-machine');
+  select.replaceChildren(...c.machines.map((m) => el('option', { value: m }, m)));
+  select.value = c.machine ?? '';
+  $('#compare-machine-box').hidden = c.machines.length < 2;
+  $('#compare-models-box').hidden = !c.models.length;
+  $('#compare-models').replaceChildren(...c.models.map((model) => el('label', { class: 'check' }, el('input', { type: 'checkbox', checked: !state.compareOff.has(model), onchange: (e) => {
+    if ((e.currentTarget as HTMLInputElement).checked) state.compareOff.delete(model);
+    else state.compareOff.add(model);
+    void showComparison();
+  } }), short(model))));
   const box = $('#comparison');
-  if (!a || !b) return box.replaceChildren(el('p', { class: 'muted' }, 'Il faut deux campagnes.'));
-  const [c, ra, rb] = await Promise.all([api<ReturnType<typeof compare>>(`compare?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`), api<Report>(`report?id=${encodeURIComponent(a)}`), api<Report>(`report?id=${encodeURIComponent(b)}`)]);
+  if (!c.models.length) return box.replaceChildren(el('p', { class: 'muted' }, 'Aucune évaluation à comparer pour l’instant.'));
+  if (!c.ranking.length) return box.replaceChildren(el('p', { class: 'muted' }, 'Cochez au moins un modèle.'));
+  const day = (iso: string) => new Date(iso).toLocaleDateString('fr-FR', { dateStyle: 'short' });
   box.replaceChildren(
     ...c.warnings.map((w) => el('div', { class: 'notice' }, w)),
-    el('div', { class: 'card' }, el('h2', {}, `${c.commonTasks} tâches communes`),
-      el('table', {}, el('tbody', {},
-        el('tr', {}, el('td', {}, a), el('td', { class: 'num' }, percent(c.a))),
-        el('tr', {}, el('td', {}, b), el('td', { class: 'num' }, percent(c.b)))))),
-    rankingTable(ra.ranking), rankingTable(rb.ranking));
+    el('div', { class: 'card' }, el('h2', {}, `${c.commonTasks} tâche${c.commonTasks > 1 ? 's' : ''} en commun`),
+      el('table', {},
+        el('thead', {}, el('tr', {}, el('th', {}, 'Modèle'), el('th', { class: 'num' }, 'Réussite en commun'), el('th', {}, 'Évaluation'), el('th', {}, 'Poney'))),
+        el('tbody', {}, ...c.ranking.map((m) => el('tr', {},
+          el('td', {}, short(m.model)),
+          el('td', { class: 'num' }, percent(m.commonRate)),
+          el('td', {}, el('button', { class: 'plain', onclick: () => void openCampaign(m.campaign) }, `${m.campaignName ?? m.campaign} · ${day(m.startedAt)}`)),
+          el('td', { class: 'muted' }, m.poney?.slice(0, 7) ?? '—')))))),
+    rankingTable(c.ranking), tradeoffChart(c.ranking) ?? '', categoriesTable(c.ranking), toolsTable(c.ranking), metacognitionTable(c.ranking));
   return undefined;
 }
-$('#compare-a').addEventListener('change', showComparison);
-$('#compare-b').addEventListener('change', showComparison);
+$('#compare-machine').addEventListener('change', () => void showComparison());
 
 // ---------- views ----------
 const PAGE_IN = [{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }];
