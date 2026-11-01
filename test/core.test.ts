@@ -4,6 +4,7 @@ import { parseVerdict, judgePrompt } from '../src/judge.ts';
 import { fitBudget, planTrials, trialKey } from '../src/plan.ts';
 import { trialSettings } from '../src/poney.ts';
 import { profile } from '../src/sandbox.ts';
+import { TASKS as SUITE } from '../suite/index.ts';
 import { compare, comparison, gate, rank, summarize } from '../src/score.ts';
 import { missingTools } from '../src/trial.ts';
 import { search } from '../src/fakeweb.ts';
@@ -21,8 +22,10 @@ const trial = (t: string, outcome: Outcome, extra: Partial<TrialRecord> = {}) =>
 
 describe('plan', () => {
   const plan = planTrials(TASKS, { numCtx: 32000, extraContexts: [16000], reps: 3 });
-  test('the floor and the rules come first, contexts last', () => {
-    expect(plan.map((e) => e.phase).filter((p, i, l) => p !== l[i - 1])).toEqual(['floor', 'rules', 'complex', 'censorship', 'repeats', 'contexts']);
+  test('floor, rules and complex tasks come first, contexts last', () => {
+    const order = plan.map((e) => e.phase).filter((p, i, l) => p !== l[i - 1]);
+    expect(new Set(order.slice(0, -3))).toEqual(new Set(['floor', 'rules', 'complex']));
+    expect(order.slice(-3)).toEqual(['censorship', 'repeats', 'contexts']);
   });
   test('only simple tasks repeat, keys are unique', () => {
     expect(plan.filter((e) => e.task.id === 's1' && e.numCtx === 32000).length).toBe(3);
@@ -90,6 +93,30 @@ describe('verdicts', () => {
     expect(rank([first(1000, 900), first(2000, 200)])[0].summary.speed.firstTokenMs).toBe(900);
     const out = rank([summary('passed', 0.7, 0.3), summary('passed', 0.67, 0.1)]);
     expect(out[0].summary.complexRate).toBe(0.67);
+  });
+});
+
+describe('a short budget', () => {
+  const plan = planTrials(SUITE, { numCtx: 32000, extraContexts: [16000], reps: 3 });
+  const { fit } = fitBudget(plan, 60);
+  const of = (phase: string) => fit.filter((e) => e.phase === phase);
+  test('still reaches complex tasks and rules', () => {
+    expect(of('complex').length).toBeGreaterThanOrEqual(3);
+    expect(of('rules').length).toBeGreaterThanOrEqual(2);
+    expect(of('floor').length).toBeGreaterThanOrEqual(8);
+  });
+  test('samples different categories', () => {
+    expect(new Set(of('complex').map((e) => e.task.category)).size).toBe(of('complex').length);
+    expect(new Set(of('floor').map((e) => e.task.category)).size).toBe(new Set(SUITE.filter((t) => t.tier === 'simple').map((t) => t.category)).size);
+  });
+  test('a long trial that does not fit leaves its place to a shorter one', () => {
+    const used = fitBudget(plan, 60).minutes;
+    expect(used).toBeGreaterThan(55);
+    expect(used).toBeLessThanOrEqual(60);
+  });
+  test('a full budget plays the same trials as before', () => {
+    expect(new Set(plan.map(trialKey)).size).toBe(plan.length);
+    expect(plan.filter((e) => e.mandatory).length).toBe(SUITE.filter((t) => t.tier === 'simple').length * 3 + SUITE.filter((t) => t.tier === 'rules' || t.tier === 'complex').length);
   });
 });
 

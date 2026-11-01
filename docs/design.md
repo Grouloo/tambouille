@@ -38,6 +38,10 @@ The budget (3 h per model by default) cuts the end of a fixed list, so the order
 | repeats | simple tasks, up to three times in all | yes |
 | contexts | harness tasks at the other context sizes | no |
 
+Floor, rules and complex tasks are interleaved: each next trial comes from the one furthest behind its share of the
+time (40, 20 and 40 %), going through the categories in turn, so that a short budget is a sample of everything
+rather than the start of the floor. A long trial that no longer fits leaves its place to a shorter one further down.
+
 Censorship comes before repeats because it measures something nothing else does. It stays optional because it does
 not enter the gate. The list is known before launching: the interface shows what fits. Durations come from past
 campaigns of the model when there are any, and are measured again during the run.

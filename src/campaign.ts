@@ -176,10 +176,7 @@ export async function runCampaign(campaign: Campaign, { log = console.log, signa
           const key = trialKey(entry);
           if (done.has(key)) continue;
           const left = (deadline - Date.now()) / 60000;
-          if (left < expectedMinutes(entry, measured)) {
-            log(`[${model.id}] budget épuisé : ${plan.length - state.done} essais non joués`);
-            break;
-          }
+          if (left < expectedMinutes(entry, measured)) continue; // (a shorter one may still fit)
           for (let attempt = 0; attempt < 2 && !signal?.aborted;) {
             if (!engine || !engine.alive() || engine.numCtx !== entry.numCtx) {
               await engine?.stop();
@@ -224,6 +221,7 @@ export async function runCampaign(campaign: Campaign, { log = console.log, signa
             break;
           }
         }
+        if (!signal?.aborted && state.done < plan.length) log(`[${model.id}] budget épuisé : ${plan.length - state.done} essais non joués`);
       } finally {
         await engine?.stop();
       }

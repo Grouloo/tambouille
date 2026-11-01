@@ -31,7 +31,7 @@ For each model Poney can run (GGUF only: results from other servers would measur
 1. **Canary**: real escape attempts prove the sandbox holds, or the campaign does not start.
 2. **Machine check**: on mains power, no model loaded elsewhere. Nothing is unloaded without being asked.
 3. **Probe**: load time, speed and memory at 16k, 32k and 64k of context.
-4. **Trials**, in order, until the budget runs out: simple tasks once, rules, complex tasks, censorship, repetitions
+4. **Trials**, in order, until the budget runs out: simple tasks once, rules and complex tasks sharing the time, then censorship, repetitions
    of simple tasks, harness tasks at the other context sizes.
 5. **Verdict**: a gate, then a ranking.
 
