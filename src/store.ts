@@ -14,6 +14,14 @@ const dir = (id: string) => path.join(RESULTS, id);
 
 export const newCampaignId = (d = new Date()) => d.toISOString().slice(0, 16).replace(/[:T]/g, '-');
 
+/** Never that of an existing campaign: two starts in one minute would merge their trials. */
+export async function freshCampaignId() {
+  const base = newCampaignId();
+  let id = base;
+  for (let n = 2; await fs.stat(dir(id)).catch(() => null); n++) id = `${base}-${n}`;
+  return id;
+}
+
 export async function saveCampaign(campaign: Campaign) {
   await fs.mkdir(dir(campaign.id), { recursive: true });
   await fs.writeFile(path.join(dir(campaign.id), 'campaign.json'), `${publicJson(campaign, 2)}\n`);

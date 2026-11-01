@@ -174,6 +174,7 @@ function renderModelRow(m: ProgressModel) {
 }
 
 const ICON_PLAY = '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12-7.5z"/></svg>';
+const ICON_PAUSE = '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14"/></svg>';
 const icon = (markup: string) => {
   const t = document.createElement('template');
   t.innerHTML = markup;
@@ -207,13 +208,14 @@ function startRename(node: HTMLElement, id: string, current: string) {
 
 async function resumeCampaign(id: string) {
   try {
+    $('#campaign-error').textContent = '';
     await api('resume', { id });
     setTimeout(async () => {
       await refreshLive();
       await openCampaign(id);
     }, 1500);
   } catch (e) {
-    $('#run-error').textContent = e instanceof Error ? e.message : String(e);
+    $('#campaign-error').textContent = e instanceof Error ? e.message : String(e);
   }
 }
 
@@ -223,7 +225,7 @@ function renderCampaign(c: Progress) {
   const when = (iso: string) => new Date(iso).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
   $('#campaign').replaceChildren(el('div', { class: 'card' },
     el('div', { class: 'live-head' }, el('h2', { title: 'Double-cliquer pour renommer', ondblclick: (e) => startRename(e.currentTarget as HTMLElement, c.id, c.name ?? '') }, c.name ?? `Campagne ${c.id}`),
-      c.live ? el('button', { class: 'plain', onclick: () => api('stop', {}) }, 'Arrêter (reprise possible)')
+      c.live ? el('button', { class: 'plain with-icon', title: 'Mettre en pause (reprise possible)', onclick: () => api('stop', {}) }, icon(ICON_PAUSE), 'Pause')
         : c.status !== 'finished' ? el('button', { class: 'plain with-icon', disabled: Boolean(state.overview?.issues.length), title: state.overview?.issues[0]?.text, onclick: () => resumeCampaign(c.id) }, icon(ICON_PLAY), 'Reprendre') : null),
     el('p', { class: 'muted' }, [`Démarrée le ${when(c.startedAt)}`, c.finishedAt ? `finie le ${when(c.finishedAt)}` : null, `${duration(c.budgetMinutes)} par modèle`, c.machine, `Poney ${c.poney}`, `suite ${c.suite}${c.fullSuite ? '' : ', partielle'}`].filter(Boolean).join(' · ')),
     c.live && c.status !== 'running' ? el('p', {}, c.status) : null,
@@ -436,7 +438,7 @@ async function showReport(id: string) {
     rankingTable(ranking), tradeoffChart(ranking) ?? '', categoriesTable(ranking), toolsTable(ranking), metacognitionTable(ranking), contextsTable(ranking) ?? '');
 }
 
-const campaignStatus = (c: HistoryItem) => (state.live.includes(c.id) ? 'en cours' : c.status === 'finished' ? 'terminée' : c.status === 'stopped' ? 'arrêtée' : 'interrompue');
+const campaignStatus = (c: HistoryItem) => (state.live.includes(c.id) ? 'en cours' : c.status === 'finished' ? 'terminée' : c.status === 'stopped' ? 'en pause' : 'interrompue');
 
 async function loadCampaigns() {
   if (state.renaming) return;

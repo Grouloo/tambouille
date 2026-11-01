@@ -11,7 +11,7 @@ import { engineCopy, poneyModels, poneyVersion, readSettings, startEngine } from
 import { canary } from './sandbox.ts';
 import { summarize } from './score.ts';
 import { gradeSlop } from './slop.ts';
-import { appendRecord, livePath, listCampaigns, loadCampaign, newCampaignId, saveCampaign, saveRecords } from './store.ts';
+import { appendRecord, livePath, listCampaigns, loadCampaign, freshCampaignId, saveCampaign, saveRecords } from './store.ts';
 import { replayed, runTrial } from './trial.ts';
 import { message } from './types.ts';
 import type { Measured } from './plan.ts';
@@ -80,7 +80,7 @@ export async function prepare({ models, budgetMinutes = PROTOCOL.budgetMinutes, 
   const list: CampaignModel[] = [];
   for (const m of chosenList) list.push({ ...m, sha256: await modelHash(m.file ?? '') });
   return {
-    id: newCampaignId(),
+    id: await freshCampaignId(),
     status: 'running',
     startedAt: new Date().toISOString(),
     budgetMinutes,

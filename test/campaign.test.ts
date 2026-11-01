@@ -89,6 +89,12 @@ test('the campaign leaves no temporary files and no API key in results', async (
   expect(text).not.toContain('secret');
   expect(await fs.readdir(path.join(tmpEnv.TAMBOUILLE_DATA, 'run', report.campaign.id, 'cache')).catch(() => [])).toEqual([]);
 });
+test('a new campaign never reuses the id of an existing one', async () => {
+  const { freshCampaignId, newCampaignId, saveCampaign, loadCampaign } = await import('../src/store.ts');
+  const id = newCampaignId();
+  await saveCampaign({ ...(await loadCampaign(report.campaign.id)), id });
+  expect(await freshCampaignId()).toBe(`${id}-2`);
+});
 test('resuming plays nothing twice', async () => {
   const { runCampaign, campaignReport } = await import('../src/campaign.ts');
   const { loadCampaign } = await import('../src/store.ts');
