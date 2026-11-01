@@ -11,14 +11,13 @@
   <nav class="sidebar" aria-label="Navigation principale">
     <a class="brand" href="/"><span aria-hidden="true">🥘</span> Tambouille</a>
     <div class="links">
-      <button data-view="launch" class="on">Lancer</button>
-      <button data-view="history">Historique</button>
-      <button data-view="compare">Comparer</button>
+      <button data-view="launch" class="on"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12-7.5z"/></svg> Lancer</button>
+      <button data-view="compare"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h13M13 3l4 4-4 4M20 17H7M11 13l-4 4 4 4"/></svg> Comparer</button>
     </div>
+    <hr>
+    <div id="campaigns"></div>
   </nav>
   <main>
-    <section id="live" hidden></section>
-
     <section id="launch" class="view">
       <div id="issues"></div>
       <div class="columns">
@@ -38,15 +37,13 @@
         </fieldset>
       </div>
       <div id="estimate"></div>
-      <button id="run" class="primary">Lancer la campagne</button>
+      <button id="run" class="primary"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12-7.5z"/></svg> Lancer la campagne</button>
       <p id="run-error" class="error" role="alert"></p>
     </section>
 
     <section id="history" class="view" hidden>
-      <div class="columns history">
-        <div id="campaigns"></div>
-        <div id="report"></div>
-      </div>
+      <div id="campaign"></div>
+      <div id="report"></div>
     </section>
 
     <section id="compare" class="view" hidden>
@@ -57,6 +54,7 @@
       <div id="comparison"></div>
     </section>
   </main>
+  <aside id="panel" aria-label="Détails du modèle" inert></aside>
   <div id="tooltip" role="status" hidden></div>
   <script type="module" src="app.js"></script>
 </body>

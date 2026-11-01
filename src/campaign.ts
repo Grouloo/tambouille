@@ -3,37 +3,43 @@
 import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { DATA, PROTOCOL } from './config.js';
-import { startFakeWeb } from './fakeweb.js';
-import { machineFingerprint, machineIssues, pressure, sampleMemory, stayAwake, wiredMb } from './machine.js';
-import { expectedMinutes, planTrials, trialKey } from './plan.js';
-import { engineCopy, poneyModels, poneyVersion, readSettings, startEngine } from './poney.js';
-import { canary } from './sandbox.js';
-import { summarize } from './score.js';
-import { appendRecord, livePath, listCampaigns, loadCampaign, newCampaignId, saveCampaign, saveRecords } from './store.js';
-import { replayed, runTrial } from './trial.js';
-import { selectTasks, SUITE_VERSION, TASKS } from '../suite/index.js';
+import { DATA, PROTOCOL } from './config.ts';
+import { startFakeWeb } from './fakeweb.ts';
+import { machineFingerprint, machineIssues, pressure, sampleMemory, stayAwake, wiredMb } from './machine.ts';
+import { expectedMinutes, planTrials, trialKey } from './plan.ts';
+import { engineCopy, poneyModels, poneyVersion, readSettings, startEngine } from './poney.ts';
+import { canary } from './sandbox.ts';
+import { summarize } from './score.ts';
+import { appendRecord, livePath, listCampaigns, loadCampaign, newCampaignId, saveCampaign, saveRecords } from './store.ts';
+import { replayed, runTrial } from './trial.ts';
+import { message } from './types.ts';
+import type { Measured } from './plan.ts';
+import type { Engine } from './poney.ts';
+import type { Campaign, CampaignModel, LiveCampaign, LiveModel, PoneyModel, ProbeRecord, RunRecord, TrialRecord } from './types.ts';
+import { selectTasks, SUITE_VERSION, TASKS } from '../suite/index.ts';
 
-const median = (l) => [...l].sort((a, b) => a - b)[Math.floor(l.length / 2)];
+const median = (l: number[]) => [...l].sort((a, b) => a - b)[Math.floor(l.length / 2)] ?? 0;
 const suiteHash = () => createHash('sha256').update(TASKS.map((t) => `${t.id}:${t.version}`).join()).digest('hex').slice(0, 16);
 
 /** sha256 of a model file, remembered by path, size and date: 17 GB take a while. */
-async function modelHash(file) {
+async function modelHash(file: string): Promise<string> {
   const cacheFile = path.join(DATA, 'hashes.json');
-  const cache = await Bun.file(cacheFile).json().catch(() => ({}));
+  const cache = (await Bun.file(cacheFile).json().catch(() => ({}))) as Record<string, string>;
   const st = await fs.stat(file);
   const id = `${file}:${st.size}:${st.mtimeMs}`;
-  if (cache[id]) return cache[id];
+  const known = cache[id];
+  if (known) return known;
   const hash = new Bun.CryptoHasher('sha256');
   for await (const chunk of Bun.file(file).stream()) hash.update(chunk);
-  cache[id] = hash.digest('hex');
+  const digest = hash.digest('hex');
+  cache[id] = digest;
   await Bun.write(cacheFile, JSON.stringify(cache, null, 2));
-  return cache[id];
+  return digest;
 }
 
-async function probeOne({ model, numCtx, engineDir, cacheDir, settingsFile }) {
+async function probeOne({ model, numCtx, engineDir, cacheDir, settingsFile }: { model: CampaignModel; numCtx: number; engineDir: string; cacheDir: string; settingsFile: string }): Promise<ProbeRecord> {
   const at = new Date().toISOString();
-  let engine = null;
+  let engine: Engine | null = null;
   const wiredBefore = await wiredMb();
   try {
     engine = await startEngine({ model: model.id, numCtx, cacheDir, engineDir, settingsFile, timeoutMs: PROTOCOL.probeMinutes * 60000 });
@@ -45,32 +51,33 @@ async function probeOne({ model, numCtx, engineDir, cacheDir, settingsFile }) {
       signal: AbortSignal.timeout(PROTOCOL.probeMinutes * 60000),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const body = await res.json();
+    const body = (await res.json()) as { timings?: { predicted_per_second?: number; prompt_ms?: number } };
     const memoryMb = await memory.stop();
     const p = await pressure();
     return { type: 'probe', at, model: model.id, numCtx, fits: p.level < 4, loadMs: engine.loadMs, tps: body.timings?.predicted_per_second ?? null, firstTokenMs: body.timings?.prompt_ms ?? null, memoryMb, estimatedMb: Math.round(engine.memory / 1048576), pressure: p };
   } catch (e) {
-    return { type: 'probe', at, model: model.id, numCtx, fits: false, error: e.message.slice(0, 300) };
+    return { type: 'probe', at, model: model.id, numCtx, fits: false, error: message(e).slice(0, 300) };
   } finally {
     await engine?.stop();
   }
 }
 
 /** Options of `bench run`, turned into what is recorded before anything starts. */
-export async function prepare({ models, budgetMinutes = PROTOCOL.budgetMinutes, categories, ids, reference = false }) {
+export async function prepare({ models, budgetMinutes = PROTOCOL.budgetMinutes, categories, ids, reference = false }: { models?: string[]; budgetMinutes?: number; categories?: string[]; ids?: string[]; reference?: boolean }): Promise<Campaign> {
   const [poney, machine, installed, settings] = await Promise.all([poneyVersion(), machineFingerprint(), poneyModels(), readSettings()]);
   const chosen = installed.filter((m) => !models?.length || models.includes(m.id));
   if (!chosen.length) throw new Error(`aucun modèle : ${models?.join(', ') || 'rien d’installé'}`);
   if (models?.length && chosen.length < models.length) throw new Error(`modèle inconnu parmi : ${models.join(', ')}`);
+  const chosenList: PoneyModel[] = chosen;
   if (reference) {
     const past = (await listCampaigns()).find((c) => c.fingerprint.machine.chip === machine.chip);
     const ref = [...installed].sort((a, b) => a.size - b.size).find((m) => m.id.startsWith(PROTOCOL.referenceModel ?? ''));
-    if (past && past.fingerprint.poney.commit !== poney.commit && ref && !chosen.includes(ref)) chosen.push(ref);
+    if (past && past.fingerprint.poney.commit !== poney.commit && ref && !chosenList.includes(ref)) chosenList.push(ref);
   }
   const tasks = selectTasks({ categories, ids });
   if (!tasks.length) throw new Error('aucune tâche sélectionnée');
-  const list = [];
-  for (const m of chosen) list.push({ ...m, sha256: await modelHash(m.file) });
+  const list: CampaignModel[] = [];
+  for (const m of chosenList) list.push({ ...m, sha256: await modelHash(m.file ?? '') });
   return {
     id: newCampaignId(),
     status: 'running',
@@ -90,7 +97,7 @@ export async function prepare({ models, budgetMinutes = PROTOCOL.budgetMinutes, 
   };
 }
 
-export async function runCampaign(campaign, { log = console.log, signal } = {}) {
+export async function runCampaign(campaign: Campaign, { log = console.log, signal }: { log?: (line: string) => void; signal?: AbortSignal } = {}) {
   const sandboxCheck = await canary();
   if (!sandboxCheck.ok) throw new Error(`le bac à sable ne tient pas : ${sandboxCheck.checks.filter((c) => !c.ok).map((c) => c.name).join(', ')}`);
   const issues = await machineIssues();
@@ -103,8 +110,8 @@ export async function runCampaign(campaign, { log = console.log, signal } = {}) 
     if (!found) throw new Error(`modèle introuvable : ${m.id}`);
     m.file = found.file;
   }
-  const previous = await loadCampaign(campaign.id).catch(() => ({ trials: [], probes: [] }));
-  const records = [...previous.probes, ...previous.trials];
+  const previous = await loadCampaign(campaign.id).catch(() => null);
+  const records: RunRecord[] = [...(previous?.probes ?? []), ...(previous?.trials ?? [])];
   campaign.status = 'running';
   await saveCampaign(campaign);
   const settings = await readSettings();
@@ -116,9 +123,9 @@ export async function runCampaign(campaign, { log = console.log, signal } = {}) 
   await Bun.write(settingsFile, JSON.stringify(settings));
   const awake = stayAwake();
   const web = await startFakeWeb();
-  const live = { id: campaign.id, pid: process.pid, status: 'running', startedAt: campaign.startedAt, models: {} };
+  const live: LiveCampaign = { id: campaign.id, pid: process.pid, status: 'running', startedAt: campaign.startedAt, models: {} };
   const publish = () => Bun.write(livePath(campaign.id), JSON.stringify(live));
-  const record = async (r) => {
+  const record = async (r: RunRecord) => {
     records.push(r);
     await appendRecord(campaign.id, r);
   };
@@ -129,7 +136,7 @@ export async function runCampaign(campaign, { log = console.log, signal } = {}) 
       if (index) await Bun.sleep(signal?.aborted ? 0 : PROTOCOL.pauseBetweenModelsSeconds * 1000);
       const started = Date.now();
       const deadline = started + campaign.budgetMinutes * 60000;
-      const state = (live.models[model.id] = { phase: 'probe', done: 0, total: 0, current: null });
+      const state: LiveModel = (live.models[model.id] = { phase: 'probe', done: 0, total: 0, current: null });
       await publish();
 
       // The probe: what holds, at what speed.
@@ -139,7 +146,7 @@ export async function runCampaign(campaign, { log = console.log, signal } = {}) 
         log(`[${model.id}] sonde ${numCtx}`);
         await record(await probeOne({ model, numCtx, engineDir, cacheDir: path.join(work, 'probe-cache'), settingsFile }));
       }
-      const fits = (n) => records.some((r) => r.type === 'probe' && r.model === model.id && r.numCtx === n && r.fits);
+      const fits = (n: number) => records.some((r) => r.type === 'probe' && r.model === model.id && r.numCtx === n && r.fits);
       const usable = contexts.filter(fits);
       const primaryCtx = fits(mainCtx) ? mainCtx : usable.filter((n) => n < mainCtx).at(-1);
       model.mainCtx = primaryCtx ?? null;
@@ -152,14 +159,15 @@ export async function runCampaign(campaign, { log = console.log, signal } = {}) 
       const plan = planTrials(tasks, { numCtx: primaryCtx, extraContexts: usable.filter((n) => n !== primaryCtx) });
       model.planned = plan.filter((e) => e.mandatory).map(trialKey);
       await saveCampaign(campaign);
-      const done = new Set(records.filter((r) => r.type === 'trial' && r.model === model.id && r.outcome !== 'infra').map((r) => r.key));
+      const trialsOf = () => records.filter((r): r is TrialRecord => r.type === 'trial' && r.model === model.id);
+      const done = new Set(trialsOf().filter((r) => r.outcome !== 'infra').map((r) => r.key));
       state.total = plan.length;
       state.plan = plan.map(trialKey);
       state.done = plan.filter((e) => done.has(trialKey(e))).length;
 
-      let engine = null;
+      let engine: Engine | null = null;
       const cacheDir = path.join(work, 'cache', model.sha256.slice(0, 12));
-      const measured = {};
+      const measured: Measured = {};
       try {
         for (const entry of plan) {
           if (signal?.aborted) break;
@@ -205,7 +213,7 @@ export async function runCampaign(campaign, { log = console.log, signal } = {}) 
             log(`[${model.id}] ${key} → ${r.outcome}${r.reason ? ` (${r.reason})` : ''}`);
             done.add(key);
             state.done++;
-            const times = records.filter((x) => x.type === 'trial' && x.model === model.id && x.tier === entry.task.tier && x.durationMs).map((x) => x.durationMs / 60000);
+            const times = trialsOf().filter((x) => x.tier === entry.task.tier && x.durationMs).map((x) => (x.durationMs ?? 0) / 60000);
             if (times.length >= 3) measured[entry.task.tier] = median(times);
             await publish();
             break;
@@ -229,14 +237,14 @@ export async function runCampaign(campaign, { log = console.log, signal } = {}) 
 }
 
 /** Judges what the judge could not reach during the campaign. */
-export async function rejudge(id, { log = console.log } = {}) {
-  const { judge } = await import('./judge.js');
+export async function rejudge(id: string, { log = console.log }: { log?: (line: string) => void } = {}) {
+  const { judge } = await import('./judge.ts');
   const campaign = await loadCampaign(id);
   const pending = path.join(DATA, 'pending', id);
   let changed = 0;
   for (const t of campaign.trials.filter((x) => x.outcome === 'unjudged')) {
     const file = path.join(pending, `${t.key.replace(/[^\w.@#-]+/g, '_')}.json`);
-    const data = await Bun.file(file).json().catch(() => null);
+    const data = (await Bun.file(file).json().catch(() => null)) as { prompt: string; answer: string } | null;
     const task = TASKS.find((x) => x.id === t.task);
     if (!data || !task?.judge) continue;
     const v = await judge({ ...data, rubric: task.judge.rubric });
@@ -244,7 +252,7 @@ export async function rejudge(id, { log = console.log } = {}) {
     if (task.judge.censorship) {
       t.censorship = v.level === 'refused' || v.score === 0 ? 'refused' : v.level === 'partial' || v.score < 1 ? 'partial' : 'answered';
       t.outcome = t.censorship === 'answered' ? 'pass' : 'fail';
-    } else t.outcome = v.score < task.judge.threshold ? 'fail' : 'pass';
+    } else t.outcome = v.score < (task.judge.threshold ?? 0) ? 'fail' : 'pass';
     delete t.reason;
     await fs.rm(file, { force: true });
     changed++;
@@ -254,8 +262,8 @@ export async function rejudge(id, { log = console.log } = {}) {
 }
 
 /** The ranking of a campaign, as the UI and `bench report` show it. */
-export async function campaignReport(id) {
-  const { rank } = await import('./score.js');
+export async function campaignReport(id: string) {
+  const { rank } = await import('./score.ts');
   const campaign = await loadCampaign(id);
   const items = campaign.models.map((m) => {
     const trials = campaign.trials.filter((t) => t.model === m.id);

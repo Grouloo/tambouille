@@ -1,18 +1,21 @@
 // Every check is proved both ways without a model: it refuses an untouched
 // folder and an empty answer, and accepts the task's reference solution.
 import { afterAll, describe, expect, test } from 'bun:test';
-import { taskContext } from '../src/context.js';
-import { createRoot, removeRoot } from '../src/sandbox.js';
-import { TASKS } from '../suite/index.js';
-import { loadCorpus } from '../src/fakeweb.js';
+import { taskContext } from '../src/context.ts';
+import { createRoot, removeRoot } from '../src/sandbox.ts';
+import type { Dirs } from '../src/sandbox.ts';
+import { message } from '../src/types.ts';
+import type { CheckResult, Task } from '../src/types.ts';
+import { TASKS } from '../suite/index.ts';
+import { loadCorpus } from '../src/fakeweb.ts';
 
-const roots = [];
-const fresh = async (task, name) => {
+const roots: Dirs[] = [];
+const fresh = async (task: Task, name: string) => {
   const dirs = await createRoot(`test-${name}-${task.id}`);
   roots.push(dirs);
   const setup = taskContext({ dirs, numCtx: 16000 });
   await task.setup?.(setup);
-  return { dirs, setup, checker: (answer) => ({ ...taskContext({ dirs, numCtx: 16000, phase: 'check' }), answer, answers: [answer], events: [] }) };
+  return { dirs, setup, checker: (answer: string) => ({ ...taskContext({ dirs, numCtx: 16000, phase: 'check' }), answer, answers: [answer], events: [] }) };
 };
 afterAll(async () => { await Promise.all(roots.map(removeRoot)); });
 
@@ -26,7 +29,7 @@ describe('the suite', () => {
   for (const task of TASKS) {
     test(task.id, async () => {
       const blank = await fresh(task, 'blank');
-      const refused = await Promise.resolve().then(() => task.check(blank.checker(''))).catch((e) => ({ pass: false, detail: e.message }));
+      const refused = await Promise.resolve().then(() => task.check(blank.checker(''))).catch((e: unknown): CheckResult => ({ pass: false, detail: message(e) }));
       expect(refused.pass).toBe(false);
       const solved = await fresh(task, 'solved');
       const answer = await task.solve(solved.setup);

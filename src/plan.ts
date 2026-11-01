@@ -1,16 +1,17 @@
 // What a campaign plays for one model, in order. The budget cuts the end of the
 // list, so what comes first is what must not be missing: the floor, then the rules.
-import { EXPECTED_MINUTES, PROTOCOL } from './config.js';
+import { EXPECTED_MINUTES, PROTOCOL } from './config.ts';
+import type { Phase, PlanEntry, Task, Tier } from './types.ts';
 
-export const trialKey = (t) => `${t.task.id}@${t.numCtx}#${t.rep}`;
+export const trialKey = (t: Pick<PlanEntry, 'task' | 'numCtx' | 'rep'>) => `${t.task.id}@${t.numCtx}#${t.rep}`;
 
 /**
  * `numCtx`: the main context. `extraContexts`: those this model holds, beside it.
  * Mandatory for a final verdict: the phases floor, rules, complex and repeats.
  */
-export function planTrials(tasks, { numCtx, extraContexts = [], reps = PROTOCOL.simpleReps }) {
-  const of = (tier) => tasks.filter((t) => t.tier === tier);
-  const entry = (phase, mandatory) => (task, rep = 1, ctx = numCtx) => ({ task, rep, numCtx: ctx, phase, mandatory });
+export function planTrials(tasks: Task[], { numCtx, extraContexts = [], reps = PROTOCOL.simpleReps }: { numCtx: number; extraContexts?: number[]; reps?: number }): PlanEntry[] {
+  const of = (tier: Tier) => tasks.filter((t) => t.tier === tier);
+  const entry = (phase: Phase, mandatory: boolean) => (task: Task, rep = 1, ctx = numCtx): PlanEntry => ({ task, rep, numCtx: ctx, phase, mandatory });
   const plan = [
     ...of('simple').map((t) => entry('floor', true)(t)),
     ...of('rules').map((t) => entry('rules', true)(t)),
@@ -25,18 +26,20 @@ export function planTrials(tasks, { numCtx, extraContexts = [], reps = PROTOCOL.
 }
 
 /** Minutes expected for a trial: what this model took on this tier, or the default. */
-export const expectedMinutes = (entry, measured = {}) => measured[entry.task.tier] ?? entry.task.expectedMinutes ?? EXPECTED_MINUTES[entry.task.tier];
+export type Measured = Partial<Record<Tier, number>>;
+
+export const expectedMinutes = (entry: PlanEntry, measured: Measured = {}) => measured[entry.task.tier] ?? entry.task.expectedMinutes ?? EXPECTED_MINUTES[entry.task.tier];
 
 /** What fits in a budget, in order. The UI shows this before launching. */
-export function fitBudget(plan, budgetMinutes, measured = {}) {
+export function fitBudget(plan: PlanEntry[], budgetMinutes: number, measured: Measured = {}) {
   let used = EXPECTED_MINUTES.probe;
-  const fit = [];
+  const fit: PlanEntry[] = [];
   for (const entry of plan) {
     used += expectedMinutes(entry, measured);
     if (used > budgetMinutes) break;
     fit.push(entry);
   }
-  const counts = {};
+  const counts: Partial<Record<Phase, number>> = {};
   for (const e of fit) counts[e.phase] = (counts[e.phase] ?? 0) + 1;
   return { fit, counts, total: plan.length, minutes: Math.round(used), complete: fit.length === plan.length, mandatoryComplete: plan.filter((e) => e.mandatory).length === fit.filter((e) => e.mandatory).length };
 }

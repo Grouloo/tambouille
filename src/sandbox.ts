@@ -4,10 +4,14 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { NODE, PONEY_DIR } from './config.js';
+import { NODE, PONEY_DIR } from './config.ts';
+
+export interface Dirs { root: string; work: string; home: string; tmp: string; ctl: string }
+export interface SandboxAccess { readable?: string[]; ports?: number[] }
+interface Sandboxed extends SandboxAccess { dirs: Dirs }
 
 const CLT = '/Library/Developer/CommandLineTools/usr/bin'; // (the /usr/bin stubs print xcrun noise in a sandbox)
-const quote = (s) => `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+const quote = (s: string) => `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 
 export const sandboxBase = async () => {
   const base = path.join(await fs.realpath(os.tmpdir()), 'tambouille');
@@ -16,7 +20,7 @@ export const sandboxBase = async () => {
 };
 
 /** A new root: `work` (the project), `home`, `tmp` writable, `ctl` readable only (key, settings, script). */
-export async function createRoot(id) {
+export async function createRoot(id: string): Promise<Dirs> {
   const root = path.join(await sandboxBase(), id.replace(/[^\w.-]+/g, '_'));
   await fs.rm(root, { recursive: true, force: true });
   const dirs = { root, work: path.join(root, 'work'), home: path.join(root, 'home'), tmp: path.join(root, 'tmp'), ctl: path.join(root, 'ctl') };
@@ -26,13 +30,13 @@ export async function createRoot(id) {
   return dirs;
 }
 
-export const removeRoot = (dirs) => fs.rm(dirs.root, { recursive: true, force: true });
+export const removeRoot = (dirs: Dirs) => fs.rm(dirs.root, { recursive: true, force: true });
 
 /** The profile. In SBPL the last matching rule wins, for the same operation: `file-read*` does not undo a `deny file-read-data`. */
-export function profile({ dirs, readable = [], ports = [] }) {
+export function profile({ dirs, readable = [], ports = [] }: Sandboxed) {
   const nodeHome = path.dirname(path.dirname(NODE));
   const read = [nodeHome, PONEY_DIR, dirs.root, ...readable];
-  const parents = []; // (getcwd reads each folder above the project)
+  const parents: string[] = []; // (getcwd reads each folder above the project)
   for (let p = path.dirname(dirs.root); p !== '/'; p = path.dirname(p)) parents.push(p);
   return `(version 1)
 (deny default)
@@ -56,7 +60,7 @@ ${ports.map((p) => `(allow network-outbound (remote ip "localhost:${p}"))`).join
 `;
 }
 
-export const sandboxEnv = (dirs) => ({
+export const sandboxEnv = (dirs: Dirs) => ({
   HOME: dirs.home,
   TMPDIR: dirs.tmp,
   SHELL: '/bin/bash',
@@ -66,14 +70,14 @@ export const sandboxEnv = (dirs) => ({
 });
 
 /** The command line and clean environment of `argv` in this sandbox. */
-export async function wrap(argv, { dirs, readable, ports }) {
+export async function wrap(argv: string[], { dirs, readable, ports }: Sandboxed) {
   const file = path.join(dirs.ctl, 'profile.sb');
   await fs.writeFile(file, profile({ dirs, readable, ports }));
   return { cmd: ['/usr/bin/sandbox-exec', '-f', file, ...argv], env: sandboxEnv(dirs) };
 }
 
 /** A shell command in the sandbox (verifiers run the agent's code there too). */
-export async function shell(command, { dirs, readable, ports, timeoutMs = 120000 }) {
+export async function shell(command: string, { dirs, readable, ports, timeoutMs = 120000 }: Sandboxed & { timeoutMs?: number }) {
   const { cmd, env } = await wrap(['/bin/bash', '-lc', command], { dirs, readable, ports });
   const p = Bun.spawn(cmd, { cwd: dirs.work, env, stdout: 'pipe', stderr: 'pipe' });
   const timer = setTimeout(() => p.kill('SIGKILL'), timeoutMs);
@@ -94,8 +98,8 @@ export async function canary() {
   const handler = () => new Response('ok');
   const allowed = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: handler });
   const forbidden = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: handler });
-  const ports = [allowed.port];
-  const attempt = async (name, command, wanted) => {
+  const ports = [allowed.port ?? 0];
+  const attempt = async (name: string, command: string, wanted: 'works' | 'fails') => {
     const r = await shell(command, { dirs, ports, timeoutMs: 20000 });
     return { name, ok: wanted === 'works' ? r.code === 0 : r.code !== 0, wanted, detail: r.out.trim().slice(0, 160) };
   };
@@ -122,7 +126,7 @@ export async function canary() {
     ];
     if (await fs.stat(flag).catch(() => null)) {
       await fs.rm(flag);
-      checks.find((c) => c.name === 'writes in the real home').ok = false;
+      for (const c of checks) if (c.name === 'writes in the real home') c.ok = false;
     }
     return { ok: checks.every((c) => c.ok), checks };
   } finally {

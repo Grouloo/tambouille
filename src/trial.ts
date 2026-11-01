@@ -1,39 +1,47 @@
 // One trial: a fresh sandbox, the agent, the check, the record.
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { analyzeAssessment, analyzeEvents, assessmentMiss, detectLanguage, finalAnswers, sumStats } from './analyze.js';
-import { PROTOCOL } from './config.js';
-import { taskContext } from './context.js';
-import { judge } from './judge.js';
-import { killStrays, portOpen, sampleMemory, thermalLimit } from './machine.js';
-import { trialKey } from './plan.js';
-import { agentArgs, trialSettings } from './poney.js';
-import { createRoot, removeRoot, wrap } from './sandbox.js';
-import { transcriptPath } from './store.js';
+import { analyzeAssessment, analyzeEvents, assessmentMiss, detectLanguage, finalAnswers, sumStats } from './analyze.ts';
+import { PROTOCOL } from './config.ts';
+import { taskContext } from './context.ts';
+import { judge } from './judge.ts';
+import { killStrays, portOpen, sampleMemory, thermalLimit } from './machine.ts';
+import { trialKey } from './plan.ts';
+import { agentArgs, trialSettings } from './poney.ts';
+import { createRoot, removeRoot, wrap } from './sandbox.ts';
+import { transcriptPath } from './store.ts';
+import { message } from './types.ts';
+import type { Engine, PoneySettings } from './poney.ts';
+import type { AgentEvent, CampaignModel, CheckResult, Expects, Miss, Outcome, PlanEntry, Task, TaskJudge, ToolUse, TrialRecord } from './types.ts';
 
-const messagesOf = (task, numCtx) => {
+interface TrialOptions {
+  campaign: string; entry: PlanEntry; model: CampaignModel; engine: Engine; web: { port: number; url: string }; settings: PoneySettings;
+  primary: boolean; signal?: AbortSignal; pendingDir: string; verify?: boolean;
+}
+
+const messagesOf = (task: Task, numCtx: number): string[] => {
   if (typeof task.messages === 'function') return task.messages({ numCtx });
-  return task.messages ?? [task.prompt];
+  return task.messages ?? [task.prompt ?? ''];
 };
 
 /** The outcomes that say nothing of the model replay; see docs/design.md. */
-export const replayed = (outcome) => outcome === 'infra';
+export const replayed = (outcome: Outcome) => outcome === 'infra';
 
 /** Which expected uses of the tools are missing. */
-export function missingTools(expects, tools, events) {
+export function missingTools(expects: Expects | undefined, tools: ToolUse, events: AgentEvent[]) {
   if (!expects) return [];
-  const missing = [];
+  const missing: string[] = [];
   for (const anyOf of expects.tools ?? []) if (!anyOf.some((t) => tools.used[t])) missing.push(anyOf.join('|'));
   if (expects.minFetches && (tools.used.fetch ?? 0) < expects.minFetches) missing.push(`${expects.minFetches} fetch`);
   if (expects.readWindow && !events.some((e) => e.type === 'action_start' && e.tool === 'read' && e.args?.start)) missing.push('read start=');
   return missing;
 }
 
-const MISSES = { overconfident: 'sûr de lui à tort', underconfident: 'doute de ce qu’il sait', blind: 'ne reconnaît pas ce qu’il sait', unreadable: 'illisible' };
+const MISSES: Record<Miss, string> = { overconfident: 'sûr de lui à tort', underconfident: 'doute de ce qu’il sait', blind: 'ne reconnaît pas ce qu’il sait', unreadable: 'illisible' };
 
 const torUp = async () => (await portOpen(9050)) || portOpen(9150);
 
-async function runAgent({ cmd, env, cwd, transcript, timeoutMs, signal }) {
+async function runAgent({ cmd, env, cwd, transcript, timeoutMs, signal }: { cmd: string[]; env: Record<string, string>; cwd: string; transcript: string; timeoutMs: number; signal?: AbortSignal }) {
   await fs.mkdir(path.dirname(transcript), { recursive: true });
   const out = Bun.file(transcript).writer();
   const p = Bun.spawn(cmd, { cwd, env, stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' });
@@ -44,7 +52,7 @@ async function runAgent({ cmd, env, cwd, transcript, timeoutMs, signal }) {
   };
   const timer = setTimeout(() => { timedOut = true; stop(); }, timeoutMs);
   signal?.addEventListener('abort', stop);
-  const events = [];
+  const events: AgentEvent[] = [];
   const stderr = new Response(p.stderr).text();
   const decoder = new TextDecoder();
   let rest = '';
@@ -52,10 +60,10 @@ async function runAgent({ cmd, env, cwd, transcript, timeoutMs, signal }) {
     out.write(chunk);
     rest += decoder.decode(chunk, { stream: true });
     const parts = rest.split('\n');
-    rest = parts.pop();
+    rest = parts.pop() ?? '';
     for (const line of parts) {
       try {
-        const ev = JSON.parse(line);
+        const ev = JSON.parse(line) as AgentEvent;
         if (ev.type !== 'delta') events.push(ev);
       } catch { /* not an event */ }
     }
@@ -68,30 +76,30 @@ async function runAgent({ cmd, env, cwd, transcript, timeoutMs, signal }) {
 }
 
 /** Grades what a judge can grade, or marks the trial to be judged later. */
-async function applyJudge(record, task, text, numCtx, pendingDir) {
-  const prompt = messagesOf(task, numCtx).at(-1);
+async function applyJudge(record: TrialRecord, task: Task & { judge: TaskJudge }, text: string, numCtx: number, pendingDir: string) {
+  const prompt = messagesOf(task, numCtx).at(-1) ?? '';
   try {
     const v = await judge({ prompt, rubric: task.judge.rubric, answer: text });
     record.judge = { model: v.model, score: v.score, level: v.level ?? null, reasons: v.reasons };
     if (task.judge.censorship) {
       record.censorship = v.level === 'refused' || v.score === 0 ? 'refused' : v.level === 'partial' || v.score < 1 ? 'partial' : 'answered';
       record.outcome = record.censorship === 'answered' ? 'pass' : 'fail';
-    } else if (v.score < task.judge.threshold) {
+    } else if (v.score < (task.judge.threshold ?? 0)) {
       record.outcome = 'fail';
       record.reason = 'jugement sous le seuil';
     }
   } catch (e) {
     record.outcome = 'unjudged';
-    record.reason = e.message.slice(0, 200);
+    record.reason = message(e).slice(0, 200);
     await fs.mkdir(pendingDir, { recursive: true });
     await Bun.write(path.join(pendingDir, `${record.key.replace(/[^\w.@#-]+/g, '_')}.json`), JSON.stringify({ prompt, answer: text }));
   }
 }
 
-export async function runTrial({ campaign, entry, model, engine, web, settings, primary, signal, pendingDir, verify = true }) {
+export async function runTrial({ campaign, entry, model, engine, web, settings, primary, signal, pendingDir, verify = true }: TrialOptions): Promise<TrialRecord> {
   const { task, numCtx, rep, phase } = entry;
   const key = trialKey(entry);
-  const base = {
+  const base: Omit<TrialRecord, 'outcome'> = {
     type: 'trial', key, at: new Date().toISOString(), task: task.id, taskVersion: task.version, category: task.category, tier: task.tier, lang: task.lang,
     model: model.id, numCtx, rep, phase, primary,
   };
@@ -100,7 +108,7 @@ export async function runTrial({ campaign, entry, model, engine, web, settings, 
 
   const dirs = await createRoot(`${campaign}-${model.id.slice(0, 24)}-${key}`);
   const ports = [engine.port, web.port, ...(tor ? [9050, 9150] : [])];
-  const sandbox = { readable: [model.file], ports };
+  const sandbox = { readable: model.file ? [model.file] : [], ports };
   try {
     await task.setup?.(taskContext({ dirs, numCtx }));
     const messages = messagesOf(task, numCtx);
@@ -119,7 +127,7 @@ export async function runTrial({ campaign, entry, model, engine, web, settings, 
     const memoryPeakMb = await memory.stop();
     await killStrays(dirs.tmp);
 
-    const record = { ...base, durationMs, exit: run.exit, memoryPeakMb, thermal: await thermalLimit(), stats: sumStats(run.events) };
+    const record: TrialRecord = { ...base, outcome: 'fail', durationMs, exit: run.exit, memoryPeakMb, thermal: await thermalLimit(), stats: sumStats(run.events) };
     if (signal?.aborted) return { ...record, outcome: 'invalid', reason: 'campagne arrêtée' };
     if (!run.events.length || run.exit === 1) return { ...record, outcome: 'infra', reason: run.stderr || `exit ${run.exit} sans événement` };
     if (!verify) return { ...record, outcome: 'pass', events: run.events };
@@ -132,11 +140,11 @@ export async function runTrial({ campaign, entry, model, engine, web, settings, 
     const ctx = { ...taskContext({ dirs, numCtx, sandbox: { ...sandbox, ports: [] }, phase: 'check' }), answer, answers, events: run.events };
 
     // The check runs even after a bad end: a violation stays a violation.
-    let verdict;
+    let verdict: CheckResult;
     try {
       verdict = await task.check(ctx);
     } catch (e) {
-      verdict = { pass: false, detail: `vérification : ${e.message.slice(0, 200)}` };
+      verdict = { pass: false, detail: `vérification : ${message(e).slice(0, 200)}` };
     }
     record.detail = verdict.detail ? String(verdict.detail).slice(0, 400) : undefined;
     if (verdict.violation) return { ...record, outcome: 'violation', reason: verdict.violation };
@@ -167,10 +175,10 @@ export async function runTrial({ campaign, entry, model, engine, web, settings, 
       record.outcome = 'fail';
       record.reason = `mauvaise langue : ${got}`;
     }
-    if (task.judge && (record.outcome === 'pass' || task.judge.censorship)) await applyJudge(record, task, target, numCtx, pendingDir);
+    if (task.judge && (record.outcome === 'pass' || task.judge.censorship)) await applyJudge(record, { ...task, judge: task.judge }, target, numCtx, pendingDir);
     return record;
   } catch (e) {
-    return { ...base, outcome: 'infra', reason: e.message.slice(0, 300) };
+    return { ...base, outcome: 'infra', reason: message(e).slice(0, 300) };
   } finally {
     await removeRoot(dirs);
   }

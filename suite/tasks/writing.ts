@@ -1,4 +1,5 @@
-import { coverage, ok } from '../lib/helpers.js';
+import type { Task } from '../../src/types.ts';
+import { coverage, ok } from '../lib/helpers.ts';
 
 const SHORT = [
   'Je prépare le déménagement de notre bureau de Nantes. On a retenu le prestataire Trans-Loire, devis de 14 750 € TTC, signé par Inès Morvan mardi.',
@@ -66,4 +67,4 @@ export default [
     },
     solve: () => 'Migration de Zuora (fin le 30 juin) vers Stripe, pilotée par Priya Raman. Budget 94 600 EUR. 41 300 abonnés, par vagues de 5 %, 30 %, puis le reste, à partir du 19 mai sur le Benelux. Risque : 2 700 abonnements CHF et TVA suisse. Facturation conservée à la demande de l\'auditrice Dubreuil. Export S3 gardé 90 jours, script par Omar. Gel des tarifs sauf Enterprise. Ouvert : qui valide la TVA, et e-mail ou in-app.',
   },
-];
+] satisfies Task[];

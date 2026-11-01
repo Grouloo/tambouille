@@ -1,19 +1,23 @@
 import { describe, expect, test } from 'bun:test';
-import { analyzeAssessment, analyzeEvents, assessmentMiss, detectLanguage, finalAnswers, inventedTools, sumStats } from '../src/analyze.js';
-import { parseVerdict, judgePrompt } from '../src/judge.js';
-import { fitBudget, planTrials, trialKey } from '../src/plan.js';
-import { trialSettings } from '../src/poney.js';
-import { profile } from '../src/sandbox.js';
-import { compare, gate, rank, summarize } from '../src/score.js';
-import { missingTools } from '../src/trial.js';
-import { search } from '../src/fakeweb.js';
-import { publicJson } from '../src/store.js';
+import { analyzeAssessment, analyzeEvents, assessmentMiss, detectLanguage, finalAnswers, inventedTools, sumStats } from '../src/analyze.ts';
+import { parseVerdict, judgePrompt } from '../src/judge.ts';
+import { fitBudget, planTrials, trialKey } from '../src/plan.ts';
+import { trialSettings } from '../src/poney.ts';
+import { profile } from '../src/sandbox.ts';
+import { compare, gate, rank, summarize } from '../src/score.ts';
+import { missingTools } from '../src/trial.ts';
+import { search } from '../src/fakeweb.ts';
+import { publicJson } from '../src/store.ts';
 import os from 'node:os';
-import { filler, finalValue } from '../suite/lib/helpers.js';
+import type { PoneySettings } from '../src/poney.ts';
+import type { Assessment, LoadedCampaign, Miss, Outcome, Task, Tier, ToolUse, TrialRecord, Verdict } from '../src/types.ts';
+import { filler, finalValue } from '../suite/lib/helpers.ts';
 
-const task = (id, category, tier) => ({ id, category, tier, version: 1 });
+const task = (id: string, category: string, tier: Tier): Task => ({ id, category, tier, version: 1, lang: 'en', check: () => ({ pass: true }), solve: () => '' });
+/** A partial shape standing for a whole one: a test only sets what it reads. */
+const as = <T>(value: unknown) => value as T;
 const TASKS = [task('s1', 'code', 'simple'), task('s2', 'harness', 'simple'), task('c1', 'harness', 'complex'), task('r1', 'rules', 'rules'), task('z1', 'censorship', 'censorship')];
-const trial = (t, outcome, extra = {}) => ({ type: 'trial', key: `${t}#${extra.rep ?? 1}`, task: t, taskVersion: 1, category: 'code', tier: 'simple', outcome, primary: true, at: '2026-01-01', numCtx: 32000, ...extra });
+const trial = (t: string, outcome: Outcome, extra: Partial<TrialRecord> = {}) => as<TrialRecord>({ type: 'trial', key: `${t}#${extra.rep ?? 1}`, task: t, taskVersion: 1, category: 'code', tier: 'simple', outcome, primary: true, at: '2026-01-01', numCtx: 32000, ...extra });
 
 describe('plan', () => {
   const plan = planTrials(TASKS, { numCtx: 32000, extraContexts: [16000], reps: 3 });
@@ -41,7 +45,7 @@ describe('plan', () => {
 });
 
 describe('gate', () => {
-  const simple = (id, outcome, rep, category = 'code') => trial(id, outcome, { rep, category });
+  const simple = (id: string, outcome: Outcome, rep: number, category = 'code') => trial(id, outcome, { rep, category });
   test('one isolated failure per category is allowed', () => {
     expect(gate([simple('a', 'fail', 1), simple('a', 'pass', 2), simple('b', 'fail', 1, 'math')]).eliminated).toBe(false);
   });
@@ -62,6 +66,8 @@ describe('verdicts', () => {
     expect(summarize([trial('a', 'pass')], ['a#1', 'b#1']).verdict).toBe('provisional');
     expect(summarize([trial('a', 'unjudged')], ['a#1']).verdict).toBe('provisional');
     expect(summarize([trial('a', 'pass')], ['a#1']).verdict).toBe('passed');
+    expect(summarize([]).verdict).toBe('unevaluated');
+    expect(summarize([trial('a', 'infra')], ['a#1']).verdict).toBe('unevaluated');
   });
   test('an elimination is final even when incomplete', () => {
     expect(summarize([trial('a', 'violation', { tier: 'rules' })], ['a#1', 'b#1']).verdict).toBe('eliminated');
@@ -69,26 +75,30 @@ describe('verdicts', () => {
   test('infrastructure failures do not count', () => {
     expect(summarize([trial('a', 'infra'), trial('a', 'pass')], ['a#1']).trials).toBe(1);
   });
-  const summary = (verdict, complexRate, misuseRate, ms = 1000) => ({ summary: { verdict, complexRate, tools: { misuseRate }, speed: { medianSimpleMs: ms } } });
+  const summary = (verdict: Verdict, complexRate: number | null, misuseRate: number | null, ms = 1000) => ({ summary: { verdict, complexRate, tools: { misuseRate }, speed: { medianSimpleMs: ms } } });
   test('ranks by the gate, then complex tasks, then tools', () => {
     const out = rank([summary('eliminated', 1, 0), summary('passed', 0.5, 0), summary('passed', 0.9, 0.5), summary('provisional', 1, 0)]);
+    expect(rank([summary('unevaluated', null, null), summary('eliminated', 0, 1)])[0].summary.verdict).toBe('eliminated');
     expect(out.map((x) => [x.summary.verdict, x.summary.complexRate])).toEqual([['passed', 0.9], ['passed', 0.5], ['provisional', 1], ['eliminated', 1]]);
   });
   test('close complex rates: the cleaner use of tools wins', () => {
+    const first = (ms: number, firstTokenMs: number) => ({ summary: { verdict: 'passed' as const, complexRate: 1, tools: { misuseRate: 0 }, speed: { medianSimpleMs: ms, firstTokenMs } } });
+    expect(rank([first(1000, 900), first(1050, 200)])[0].summary.speed.firstTokenMs).toBe(200);
+    expect(rank([first(1000, 900), first(2000, 200)])[0].summary.speed.firstTokenMs).toBe(900);
     const out = rank([summary('passed', 0.7, 0.3), summary('passed', 0.67, 0.1)]);
     expect(out[0].summary.complexRate).toBe(0.67);
   });
 });
 
 describe('compare', () => {
-  const fp = (commit, chip = 'M4') => ({ machine: { chip, memoryGb: 24 }, suite: { major: 1 }, poney: { commit, systemPromptHash: commit, engineBuild: 'b' } });
+  const fp = (commit: string, chip = 'M4') => ({ machine: { chip, memoryGb: 24 }, suite: { major: 1 }, poney: { commit, systemPromptHash: commit, engineBuild: 'b' } });
   test('on common tasks only, with a warning if Poney changed', () => {
-    const c = compare({ fingerprint: fp('aaa'), trials: [trial('a', 'pass'), trial('b', 'pass')] }, { fingerprint: fp('bbb'), trials: [trial('a', 'fail')] });
+    const c = compare(as<LoadedCampaign>({ fingerprint: fp('aaa'), trials: [trial('a', 'pass'), trial('b', 'pass')] }), as<LoadedCampaign>({ fingerprint: fp('bbb'), trials: [trial('a', 'fail')] }));
     expect(c).toMatchObject({ direct: true, commonTasks: 1, a: 1, b: 0 });
     expect(c.warnings.join()).toContain('Poney a changé');
   });
   test('another machine is not a direct comparison', () => {
-    expect(compare({ fingerprint: fp('a', 'M1'), trials: [] }, { fingerprint: fp('a'), trials: [] }).direct).toBe(false);
+    expect(compare(as<LoadedCampaign>({ fingerprint: fp('a', 'M1'), trials: [] }), as<LoadedCampaign>({ fingerprint: fp('a'), trials: [] })).direct).toBe(false);
   });
 });
 
@@ -128,14 +138,14 @@ describe('analysis of a run', () => {
     expect(detectLanguage('OK')).toBeNull();
   });
   test('expected tools', () => {
-    expect(missingTools({ tools: [['recall', 'remember'], ['read']] }, { used: { remember: 1 } }, [])).toEqual(['read']);
-    expect(missingTools({ minFetches: 2 }, { used: { fetch: 1 } }, [])).toEqual(['2 fetch']);
-    expect(missingTools({ readWindow: true }, { used: {} }, [{ type: 'action_start', tool: 'read', args: { start: 5 } }])).toEqual([]);
+    expect(missingTools({ tools: [['recall', 'remember'], ['read']] }, as<ToolUse>({ used: { remember: 1 } }), [])).toEqual(['read']);
+    expect(missingTools({ minFetches: 2 }, as<ToolUse>({ used: { fetch: 1 } }), [])).toEqual(['2 fetch']);
+    expect(missingTools({ readWindow: true }, as<ToolUse>({ used: {} }), [{ type: 'action_start', tool: 'read', args: { start: 5 } }])).toEqual([]);
   });
 });
 
 describe('the assessment', () => {
-  const triage = (route, extra = {}) => ({ type: 'triage', route, known: [{}], doubts: [], unknowns: [], ...extra });
+  const triage = (route: string, extra = {}) => ({ type: 'triage', route, known: [{}], doubts: [], unknowns: [], ...extra });
   test('keeps the first assessment of the last message, not its updates or a sub-agent', () => {
     const a = analyzeAssessment([
       { type: 'turn_start' }, triage('investigate'), { type: 'turn_end' },
@@ -149,7 +159,7 @@ describe('the assessment', () => {
     expect(analyzeAssessment([])).toBeNull();
   });
   test('tells over-confidence from under-confidence', () => {
-    const a = (route, known, unsure) => ({ route, known, doubts: unsure, unknowns: 0 });
+    const a = (route: string, known: number, unsure: number) => as<Assessment>({ route, known, doubts: unsure, unknowns: 0 });
     expect(assessmentMiss('lookup', a('direct', 2, 0))).toBe('overconfident');
     expect(assessmentMiss('lookup', a('check', 0, 1))).toBeNull();
     expect(assessmentMiss('direct', a('check', 1, 1))).toBe('underconfident');
@@ -161,7 +171,7 @@ describe('the assessment', () => {
     expect(assessmentMiss(undefined, null)).toBeNull();
   });
   test('sums up how sure the model was, and how right', () => {
-    const t = (route, outcome, assessmentMiss) => trial('a', outcome, { assessment: { route, thinkingChars: 10 }, assessmentMiss });
+    const t = (route: string, outcome: Outcome, assessmentMiss?: Miss) => trial('a', outcome, { assessment: as<Assessment>({ route, thinkingChars: 10 }), assessmentMiss });
     const c = summarize([t('direct', 'pass'), t('direct', 'fail', 'overconfident'), t('check', 'pass')]).metacognition;
     expect(c).toMatchObject({ overconfident: 1, assessed: 3, directSuccess: 0.5, lookupSuccess: 1, thinkingChars: 10 });
   });
@@ -188,10 +198,10 @@ describe('small parts', () => {
     expect(search(pages, 'zzz')).toEqual([]);
   });
   test('a trial never gets Tor unless asked, and no API key', () => {
-    const s = trialSettings({ config: { torEnabled: true, torShell: true }, modelContexts: { x: 1 } }, { numCtx: 16000, searxngUrl: 'http://w' });
+    const s = trialSettings(as<PoneySettings>({ config: { torEnabled: true, torShell: true }, modelContexts: { x: 1 } }), { numCtx: 16000, searxngUrl: 'http://w', tor: false });
     expect(s.config).toMatchObject({ torEnabled: false, torShell: false, numCtx: 16000, searxngUrl: 'http://w' });
     expect(s.modelContexts).toEqual({});
-    expect(trialSettings({ config: {} }, { numCtx: 1, searxngUrl: 'http://w', tor: true }).config.searxngUrl).toBe('');
+    expect(trialSettings(as<PoneySettings>({ config: {} }), { numCtx: 1, searxngUrl: 'http://w', tor: true }).config.searxngUrl).toBe('');
   });
   test('the profile denies by default and lists its ports', () => {
     const p = profile({ dirs: { root: '/r', work: '/r/work', home: '/r/home', tmp: '/r/tmp', ctl: '/r/ctl' }, ports: [1234], readable: ['/m/x.gguf'] });
@@ -209,15 +219,43 @@ describe('small parts', () => {
 });
 
 test('the activity of a trial survives an incomplete last line', async () => {
-  const { activityOf } = await import('../src/progress.js');
+  const { activityOf } = await import('../src/progress.ts');
   const lines = [{ type: 'triage', route: 'investigate', known: [], doubts: [], unknowns: [1] }, { type: 'action_start', id: 1, tool: 'read', args: { path: 'a.txt' } }, { type: 'action_end', id: 1, ok: false }, { type: 'assistant_start' }, { type: 'delta', kind: 'thinking', text: 'hm' }];
   const a = activityOf(`${lines.map((l) => JSON.stringify(l)).join('\n')}\n{"type":"del`);
   expect(a.steps[1]).toEqual({ kind: 'tool', tool: 'read', text: 'a.txt', ok: false });
   expect(a.draft).toEqual({ kind: 'thinking', text: 'hm' });
 });
 test('every planned trial has a state, and a result wins over the current key', async () => {
-  const { trialRows } = await import('../src/progress.js');
-  const rows = trialRows(['a@1#1', 'b@1#1', 'c@1#1'], [{ key: 'a@1#1', outcome: 'fail', reason: 'non' }, { key: 'x@1#1', outcome: 'pass' }], 'b@1#1');
+  const { trialRows } = await import('../src/progress.ts');
+  const rows = trialRows(['a@1#1', 'b@1#1', 'c@1#1'], [trial('a', 'fail', { key: 'a@1#1', reason: 'non' }), trial('x', 'pass', { key: 'x@1#1' })], 'b@1#1');
   expect(rows.map((r) => r.state)).toEqual(['fail', 'running', 'pending', 'pass']);
-  expect(trialRows(['a@1#1'], [{ key: 'a@1#1', outcome: 'pass' }], 'a@1#1')[0].state).toBe('pass');
+  expect(trialRows(['a@1#1'], [trial('a', 'pass', { key: 'a@1#1' })], 'a@1#1')[0].state).toBe('pass');
+});
+
+test('a transcript keeps its steps and the unfinished answer', async () => {
+  const { transcriptOf } = await import('../src/progress.ts');
+  const raw = [{ type: 'action_start', id: 1, tool: 'run', args: { command: 'ls' } }, { type: 'action_end', id: 1, ok: true, output: 'x' }, { type: 'assistant_end', text: 'fini', thinking: 'hm' }, { type: 'assistant_start' }, { type: 'delta', text: 'en co' }].map((l) => JSON.stringify(l)).join('\n');
+  expect(transcriptOf(raw).map((e) => e.kind)).toEqual(['tool', 'thinking', 'answer', 'draft']);
+});
+test('the time left follows the trials played, within the budget', async () => {
+  const { modelState } = await import('../src/progress.ts');
+  const rows = [{ state: 'pass', durationMs: 60000 }, { state: 'running' }];
+  const base = { started: true, index: 0, lastStarted: 0, rows, total: 4, budgetMinutes: 60, live: true };
+  expect(modelState(base)).toEqual({ state: 'running', remainingMs: 180000 });
+  expect(modelState({ ...base, budgetMinutes: 2 }).remainingMs).toBe(60000);
+  expect(modelState({ ...base, started: false }).state).toBe('waiting');
+  expect(modelState({ ...base, index: 0, lastStarted: 1 }).state).toBe('done');
+  expect(modelState({ ...base, live: false }).state).toBe('interrupted');
+});
+
+test('no source says any', async () => {
+  const found: string[] = [];
+  for (const dir of ['src', 'suite', 'test']) {
+    for await (const file of new Bun.Glob('**/*.ts').scan(dir)) {
+      if (file.startsWith('fixtures/')) continue;
+      const text = await Bun.file(`${dir}/${file}`).text();
+      if (/(?::|<|\bas|\||&)\s*any\b(?![-' ]\w)/.test(text.replace(/'[^'\n]*'|`[^`]*`|\/\/.*$/gm, ''))) found.push(`${dir}/${file}`);
+    }
+  }
+  expect(found).toEqual([]);
 });

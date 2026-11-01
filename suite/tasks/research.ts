@@ -1,4 +1,5 @@
-import { ok } from '../lib/helpers.js';
+import type { Task } from '../../src/types.ts';
+import { ok } from '../lib/helpers.ts';
 
 const webRead = { tools: [['web_search'], ['fetch']] };
 export default [
@@ -31,4 +32,4 @@ export default [
     },
     solve: async ({ write }) => { await write('rapport.md', '# Rapport\nMoyenne corrigée par rectificatif : 41 mg/L, sous la limite de 50. Le 52 mg/L est un prélèvement unique en juin. Le doublement de la presse est sans source.\n'); return 'Écrit dans rapport.md.'; },
   },
-];
+] satisfies Task[];

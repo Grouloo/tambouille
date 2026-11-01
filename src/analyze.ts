@@ -1,37 +1,39 @@
 // What the events of a run say about the way the model used the harness.
+import type { AgentEvent, Assessment, Lang, Miss, ToolUse, TrialStats } from './types.ts';
+
 const TOOLS = new Set(['list', 'read', 'search', 'write', 'edit', 'run', 'web_search', 'fetch', 'plan', 'agent', 'remember', 'forget', 'recall']);
 const SYNTAX = new Set(['old', 'new', 'reasoning', 'think', 'thinking', 'tool_call', 'tool_calls', 'function_call', 'arguments', 'parameter', 'args', 'path', 'content', 'command', 'query', 'pattern', 'url', 'title', 'task', 'tasks', 'body', 'start', 'end']);
 const HTML = new Set('a abbr b body br button code div em footer form h1 h2 h3 h4 h5 h6 head header hr html i img input kbd label li main nav ol option p pre script section select small span strong style sub summary sup table tbody td textarea th thead title tr u ul'.split(' '));
 
 /** Tag-shaped or JSON-shaped calls to tools that do not exist. Poney ignores them in silence. */
-export function inventedTools(raw) {
+export function inventedTools(raw?: string) {
   if (!raw) return [];
   const text = raw
     .replace(/```[\s\S]*?```/g, '')
     .replace(/`[^`\n]*`/g, '')
     .replace(/<(write|edit|run)\b[^>]*>[\s\S]*?<\/\1>/g, '');
-  const found = [];
+  const found: string[] = [];
   for (const m of text.matchAll(/<([a-z][a-z0-9_]*)(?:\s[^<>]*)?\/?>/g)) {
-    const name = m[1];
+    const name = m[1] ?? '';
     if (TOOLS.has(name) || SYNTAX.has(name) || HTML.has(name)) continue;
     if (name.includes('_') || m[0].endsWith('/>') || text.includes(`</${name}>`)) found.push(name);
   }
-  for (const m of text.matchAll(/"name"\s*:\s*"([a-zA-Z_]+)"/g)) if (!TOOLS.has(m[1])) found.push(m[1]);
-  for (const m of text.matchAll(/call:([a-zA-Z_]+)\{/g)) if (!TOOLS.has(m[1])) found.push(m[1]);
+  for (const m of text.matchAll(/"name"\s*:\s*"([a-zA-Z_]+)"/g)) if (m[1] && !TOOLS.has(m[1])) found.push(m[1]);
+  for (const m of text.matchAll(/call:([a-zA-Z_]+)\{/g)) if (m[1] && !TOOLS.has(m[1])) found.push(m[1]);
   return found;
 }
 
 /** Counters of a run, sub-agents included. */
-export function analyzeEvents(events) {
+export function analyzeEvents(events: AgentEvent[]): ToolUse {
   const c = { calls: 0, failedCalls: 0, inventedTools: 0, repairedAliases: 0, loops: 0, repeatedActions: 0, compactions: 0 };
-  const used = {};
-  const invented = [];
-  let last = null;
-  const open = new Map();
+  const used: Record<string, number> = {};
+  const invented: string[] = [];
+  let last: string | null = null;
+  const open = new Map<AgentEvent['id'], string | undefined>();
   for (const ev of events) {
     if (ev.type === 'action_start') {
       c.calls++;
-      used[ev.tool] = (used[ev.tool] ?? 0) + 1;
+      used[ev.tool ?? ''] = (used[ev.tool ?? ''] ?? 0) + 1;
       open.set(ev.id, ev.tool);
       if (ev.calledAs && !ev.calledAs.includes(':') && ev.calledAs !== ev.tool) c.repairedAliases++;
       const sig = JSON.stringify([ev.tool, ev.args]);
@@ -55,8 +57,8 @@ export function analyzeEvents(events) {
  * The assessment Poney made before acting, for the last message of the main agent:
  * the first of that turn, not its updates, which say what the sources taught.
  */
-export function analyzeAssessment(events) {
-  let first = null;
+export function analyzeAssessment(events: AgentEvent[]): Assessment | null {
+  let first = null as AgentEvent | null;
   let updates = 0;
   let unreadable = 0;
   let retries = 0;
@@ -81,7 +83,7 @@ export function analyzeAssessment(events) {
 }
 
 /** How the assessment differs from the known truth: null, 'overconfident', 'underconfident', 'blind' or 'unreadable'. */
-export function assessmentMiss(expected, a) {
+export function assessmentMiss(expected: string | undefined, a: Assessment | null): Miss | null {
   if (!expected) return null;
   if (!a?.route) return 'unreadable';
   const unsure = a.doubts + a.unknowns;
@@ -92,8 +94,8 @@ export function assessmentMiss(expected, a) {
 }
 
 /** The final answer of each turn of the main agent, and the replies in order. */
-export function finalAnswers(events) {
-  const answers = [];
+export function finalAnswers(events: AgentEvent[]) {
+  const answers: string[] = [];
   let current = '';
   for (const ev of events) {
     if (ev.agentId) continue;
@@ -110,7 +112,7 @@ export function finalAnswers(events) {
 const FR = /\b(le|la|les|des|une|est|sont|dans|pour|avec|que|qui|pas|sur|nous|vous|cette|mais|aussi|être)\b/gi;
 const EN = /\b(the|of|and|is|are|in|for|with|that|this|not|on|we|you|but|also|from|have|be)\b/gi;
 /** 'fr', 'en', or null when there is too little text to tell. */
-export function detectLanguage(text) {
+export function detectLanguage(text: string): Lang | null {
   const prose = text.replace(/```[\s\S]*?```/g, ' ');
   const fr = prose.match(FR)?.length ?? 0;
   const en = prose.match(EN)?.length ?? 0;
@@ -118,10 +120,10 @@ export function detectLanguage(text) {
   return fr >= en ? 'fr' : 'en';
 }
 
-export function sumStats(events) {
+export function sumStats(events: AgentEvent[]): TrialStats {
   const ends = events.filter((e) => e.type === 'turn_end' && !e.agentId && e.stats);
   const firsts = events.filter((e) => e.type === 'assistant_end' && !e.agentId && e.stats);
-  const sum = (k) => ends.reduce((n, e) => n + (e.stats[k] ?? 0), 0);
+  const sum = (k: string) => ends.reduce((n, e) => n + (e.stats?.[k] ?? 0), 0);
   const genMs = sum('genMs');
-  return { steps: sum('steps'), tokens: sum('tokens'), genMs, promptMs: sum('promptMs'), tps: genMs ? Math.round((sum('tokens') / (genMs / 1000)) * 10) / 10 : null, firstTokenMs: firsts[0]?.stats.promptMs ?? null };
+  return { steps: sum('steps'), tokens: sum('tokens'), genMs, promptMs: sum('promptMs'), tps: genMs ? Math.round((sum('tokens') / (genMs / 1000)) * 10) / 10 : null, firstTokenMs: firsts[0]?.stats?.promptMs ?? null };
 }

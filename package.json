@@ -5,8 +5,13 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "bench": "bun src/cli.js",
-    "ui": "bun src/cli.js serve",
-    "test": "bun test test/core.test.js test/suite.test.js && bun test test/campaign.test.js"
+    "bench": "bun src/cli.ts",
+    "ui": "bun src/cli.ts serve",
+    "typecheck": "tsc --noEmit",
+    "test": "tsc --noEmit && bun test test/core.test.ts test/suite.test.ts && bun test test/campaign.test.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.4",
+    "typescript": "^7.0.2"
   }
 }

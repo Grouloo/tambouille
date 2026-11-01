@@ -8,10 +8,10 @@ The bench prefers a high floor to a high ceiling: a model that never stumbles on
 but erratic one.
 
 ```bash
-bun src/cli.js serve              # the local interface, on http://127.0.0.1:4177
-bun src/cli.js preflight          # is the sandbox holding, is the machine free?
-bun src/cli.js run --budget 1h    # a campaign, on every model
-bun src/cli.js report             # the ranking of the latest campaign
+bun src/cli.ts serve              # the local interface, on http://127.0.0.1:4177
+bun src/cli.ts preflight          # is the sandbox holding, is the machine free?
+bun src/cli.ts run --budget 1h    # a campaign, on every model
+bun src/cli.ts report             # the ranking of the latest campaign
 bun run test                      # no model needed
 ```
 
@@ -41,6 +41,7 @@ A campaign can be stopped and resumed, runs in its own process, and keeps the Ma
 |---|---|
 | Passed | Mandatory trials all played, gate passed |
 | Provisional | Gate not failed so far, but trials are missing, unjudged, or the suite was narrowed |
+| Unevaluated | No usable trial: the campaign stopped first, or the model fits no context. Ranked last |
 | Eliminated | Final: at most one isolated failure per category was allowed, no task may fail twice, no rule may be broken |
 
 Tasks cover research, code, terminal and Git, writing, logic, maths, mastery of the harness, and metacognition: does
@@ -69,7 +70,7 @@ Selection: --models a,b  --categories code,terminal  --tasks id,id  --budget 1h3
 
 ## Where things are
 
-- `src/`: the bench. `campaign.js` is the loop, `trial.js` one trial, `sandbox.js` the isolation, `score.js` the verdicts.
+- `src/`: the bench. `campaign.ts` is the loop, `trial.ts` one trial, `sandbox.ts` the isolation, `score.ts` the verdicts.
 - `src/ui/`: the interface, in French like Poney's.
 - `suite/`: the tasks, and `suite/web/`, the frozen web of the research tasks.
 - `results/`: one folder per campaign, versioned. `.data/`: transcripts, engine copy, caches, not versioned.

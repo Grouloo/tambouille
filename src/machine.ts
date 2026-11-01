@@ -4,21 +4,21 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { APP_DATA } from './config.js';
+import { APP_DATA } from './config.ts';
 
 const run = promisify(execFile);
-const sh = async (cmd, ...args) => {
+const sh = async (cmd: string, ...args: string[]): Promise<string> => {
   try {
     return (await run(cmd, args, { encoding: 'utf8', timeout: 20000 })).stdout;
   } catch (e) {
-    return e.stdout ?? '';
+    return (e as { stdout?: string }).stdout ?? '';
   }
 };
 
-const getJson = async (url) => {
+const getJson = async <T>(url: string): Promise<T | null> => {
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(2000) });
-    return res.ok ? await res.json() : null;
+    return res.ok ? ((await res.json()) as T) : null;
   } catch {
     return null;
   }
@@ -26,7 +26,7 @@ const getJson = async (url) => {
 
 export async function machineFingerprint() {
   const hw = await sh('/usr/sbin/system_profiler', 'SPHardwareDataType');
-  const field = (name) => hw.match(new RegExp(`${name}: (.+)`))?.[1].trim() ?? null;
+  const field = (name: string) => hw.match(new RegExp(`${name}: (.+)`))?.[1]?.trim() ?? null;
   return {
     model: field('Model Identifier'),
     chip: field('Chip'),
@@ -38,25 +38,28 @@ export async function machineFingerprint() {
 
 const onPower = async () => /AC Power/.test(await sh('/usr/bin/pmset', '-g', 'batt'));
 
-const foreignLlama = async (own) => {
+const foreignLlama = async (own: number[]) => {
   const out = await sh('/usr/bin/pgrep', '-x', 'llama-server');
   return out.split('\n').filter(Boolean).map(Number).filter((pid) => !own.includes(pid) && pid !== process.pid);
 };
 
 /** Models loaded by anything but this campaign. */
-async function loadedElsewhere(own = []) {
-  const found = [];
-  const lms = await getJson('http://localhost:1234/api/v0/models');
+interface Loaded { kind: string; name: string; pid?: number }
+export interface MachineIssue { kind: string; text: string; unload?: boolean }
+
+async function loadedElsewhere(own: number[] = []) {
+  const found: Loaded[] = [];
+  const lms = await getJson<{ data?: { id: string; state: string }[] }>('http://localhost:1234/api/v0/models');
   for (const m of lms?.data ?? []) if (m.state === 'loaded') found.push({ kind: 'lmstudio', name: m.id });
-  const ollama = await getJson('http://localhost:11434/api/ps');
+  const ollama = await getJson<{ models?: { name: string }[] }>('http://localhost:11434/api/ps');
   for (const m of ollama?.models ?? []) found.push({ kind: 'ollama', name: m.name });
   for (const pid of await foreignLlama(own)) found.push({ kind: 'llama-server', name: `pid ${pid}`, pid });
   return found;
 }
 
 /** What stands in the way of a clean measure. `own`: this campaign's engine, and its children. */
-export async function machineIssues({ own = [], power = true } = {}) {
-  const issues = [];
+export async function machineIssues({ own = [], power = true }: { own?: number[]; power?: boolean } = {}) {
+  const issues: MachineIssue[] = [];
   if (power && !(await onPower())) issues.push({ kind: 'power', text: 'Le Mac n’est pas sur secteur.' });
   for (const m of await loadedElsewhere(own)) issues.push({ kind: m.kind, text: `Un modèle est chargé ailleurs (${m.kind}) : ${m.name}.`, unload: true });
   return issues;
@@ -67,7 +70,7 @@ export async function unloadOthers() {
   for (const m of await loadedElsewhere()) {
     if (m.kind === 'lmstudio') await sh(path.join(os.homedir(), '.lmstudio', 'bin', 'lms'), 'unload', '--all');
     if (m.kind === 'ollama') await fetch('http://localhost:11434/api/generate', { method: 'POST', body: JSON.stringify({ model: m.name, keep_alive: 0 }) }).catch(() => {});
-    if (m.kind === 'llama-server') {
+    if (m.kind === 'llama-server' && m.pid) {
       const cmd = await sh('/bin/ps', '-o', 'command=', '-p', String(m.pid));
       if (cmd.includes(APP_DATA)) try { process.kill(m.pid, 'SIGTERM'); } catch {}
     }
@@ -75,7 +78,7 @@ export async function unloadOthers() {
 }
 
 /** What a process holds, in MiB. Not its footprint (`top`, `footprint`): that leaves out the weights, mapped and wired for Metal. */
-export const residentMb = async (pid) => {
+export const residentMb = async (pid: number) => {
   const kb = Number((await sh('/bin/ps', '-o', 'rss=', '-p', String(pid))).trim());
   return kb ? Math.round(kb / 1024) : null;
 };
@@ -100,7 +103,7 @@ export async function thermalLimit() {
   return m ? Number(m[1]) : 100;
 }
 
-export const portOpen = (port, host = '127.0.0.1') => new Promise((resolve) => {
+export const portOpen = (port: number, host = '127.0.0.1') => new Promise<boolean>((resolve) => {
   const s = net.connect({ port, host, timeout: 1500 });
   s.on('connect', () => { s.destroy(); resolve(true); });
   s.on('error', () => resolve(false));
@@ -111,7 +114,7 @@ export const portOpen = (port, host = '127.0.0.1') => new Promise((resolve) => {
 export const stayAwake = () => Bun.spawn(['/usr/bin/caffeinate', '-dimsu', '-w', String(process.pid)], { stdout: 'ignore', stderr: 'ignore' });
 
 /** Peak memory of a model: the larger of what its process holds and what got wired since `wiredBefore`. */
-export function sampleMemory(pid, { wiredBefore = null, everyMs = 5000 } = {}) {
+export function sampleMemory(pid: number, { wiredBefore = null, everyMs = 5000 }: { wiredBefore?: number | null; everyMs?: number } = {}) {
   let peak = 0;
   let stopped = false;
   const loop = (async () => {
@@ -125,7 +128,7 @@ export function sampleMemory(pid, { wiredBefore = null, everyMs = 5000 } = {}) {
 }
 
 /** Processes left behind by a trial, found by the temporary folder in their environment. */
-export async function killStrays(marker) {
+export async function killStrays(marker: string) {
   const out = await sh('/bin/ps', '-axeww', '-o', 'pid=,command=');
   for (const line of out.split('\n')) {
     if (!line.includes(marker)) continue;

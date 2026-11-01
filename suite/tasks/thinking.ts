@@ -1,12 +1,13 @@
-import { finalValue, normal, ok } from '../lib/helpers.js';
+import type { CheckContext, Lang, Task, Tier } from '../../src/types.ts';
+import { finalValue, normal, ok } from '../lib/helpers.ts';
 
 const asFr = ' Termine par une ligne « ANSWER: <ta réponse> ».';
 const asEn = ' End with a line "ANSWER: <your answer>".';
-const exact = (...accepted) => ({ answer }) => {
+const exact = (...accepted: (string | RegExp)[]) => ({ answer }: CheckContext) => {
   const v = normal(finalValue(answer)).replace(/[.,;]$/, '');
   return ok(accepted.some((a) => (a instanceof RegExp ? a.test(v) : v === a)), `obtenu : ${v}`);
 };
-const task = (id, category, tier, lang, prompt, accepted, reference) => ({
+const task = (id: string, category: string, tier: Tier, lang: Lang, prompt: string, accepted: (string | RegExp)[], reference: string): Task => ({
   id, version: 1, category, tier, lang, prompt: prompt + (lang === 'fr' ? asFr : asEn), check: exact(...accepted), solve: () => `ANSWER: ${reference}`,
 });
 
@@ -23,4 +24,4 @@ export default [
   task('math-dice', 'math', 'simple', 'fr', 'On lance deux dés équilibrés à six faces. Quelle est la probabilité que la somme fasse 9 ? Réponds par une fraction irréductible.', ['1/9'], '1/9'),
   task('math-books', 'math', 'complex', 'en', 'In how many ways can 7 distinct books be arranged on a shelf so that two given books are never next to each other?', [/^3[, ]?600$/], '3600'),
   task('math-sum-digits', 'math', 'complex', 'fr', 'Combien d\'entiers de 1 à 2000 inclus sont divisibles par 3 ou par 7, mais pas par 21 ?', ['761'], '761'),
-];
+] satisfies Task[];

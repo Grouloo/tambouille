@@ -1,7 +1,9 @@
-import { ok } from '../lib/helpers.js';
+import type { TaskContext } from '../../src/context.ts';
+import type { Task } from '../../src/types.ts';
+import { ok } from '../lib/helpers.ts';
 
-const pyTest = async ({ hidden, sh }, name, body) => { await hidden(name, body); return sh(`python3 .hidden/${name}`); };
-const nodeTest = async ({ hidden, sh }, name, body) => { await hidden(name, body); return sh(`node --test .hidden/${name}`); };
+const pyTest = async ({ hidden, sh }: TaskContext, name: string, body: string) => { await hidden(name, body); return sh(`python3 .hidden/${name}`); };
+const nodeTest = async ({ hidden, sh }: TaskContext, name: string, body: string) => { await hidden(name, body); return sh(`node --test .hidden/${name}`); };
 
 const INVENTORY = {
   'inventory/store.py': `class Store:
@@ -144,4 +146,4 @@ class Store:
       return 'Done.';
     },
   },
-];
+] satisfies Task[];

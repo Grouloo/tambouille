@@ -22,7 +22,7 @@ because Docker has no Metal (the engine would stay out anyway) and its VM would 
 
 ## The canary
 
-`bun src/cli.js preflight`, and the start of every campaign, tries all of this for real: what must work, and what must
+`bun src/cli.ts preflight`, and the start of every campaign, tries all of this for real: what must work, and what must
 fail, including a secret planted in the real home and an unlisted port. A failure stops the campaign.
 
 ## Known limits

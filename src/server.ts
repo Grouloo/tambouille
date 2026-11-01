@@ -3,32 +3,38 @@
 // 127.0.0.1 only; requests that change something must come from its own page.
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { campaignReport } from './campaign.js';
-import { DATA, PROTOCOL, ROOT } from './config.js';
-import { machineIssues, unloadOthers } from './machine.js';
-import { fitBudget, planTrials } from './plan.js';
-import { poneyModels, readSettings } from './poney.js';
-import { progressOf } from './progress.js';
-import { compare } from './score.js';
-import { listCampaigns, loadCampaign } from './store.js';
-import { TASKS, selectTasks } from '../suite/index.js';
+import { campaignReport } from './campaign.ts';
+import { DATA, PROTOCOL, ROOT } from './config.ts';
+import { machineIssues, unloadOthers } from './machine.ts';
+import { fitBudget, planTrials } from './plan.ts';
+import { poneyModels, readSettings } from './poney.ts';
+import { progressOf, transcriptFor } from './progress.ts';
+import { compare } from './score.ts';
+import { listCampaigns, loadCampaign } from './store.ts';
+import { message } from './types.ts';
+import type { Measured } from './plan.ts';
+import type { LiveCampaign, Tier } from './types.ts';
+import { TASKS, selectTasks } from '../suite/index.ts';
+
+export interface Selection { models?: string[]; categories?: string[]; ids?: string[]; budgetMinutes?: number; reference?: boolean }
 
 const UI = path.join(import.meta.dir, 'ui');
-const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
-const isAlive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+const TYPES: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
+const TRANSPILER = new Bun.Transpiler({ loader: 'ts' });
+const isAlive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
 
 async function liveCampaigns() {
   const dir = path.join(DATA, 'live');
-  const out = [];
+  const out: LiveCampaign[] = [];
   for (const name of await fs.readdir(dir).catch(() => [])) {
-    const data = await Bun.file(path.join(dir, name)).json().catch(() => null);
+    const data = (await Bun.file(path.join(dir, name)).json().catch(() => null)) as LiveCampaign | null;
     if (data && isAlive(data.pid)) out.push(data);
   }
   return out;
 }
 
-const measuredMinutes = async (model) => {
-  const times = {};
+const measuredMinutes = async (model: string): Promise<Measured> => {
+  const times: Partial<Record<Tier, number[]>> = {};
   for (const c of (await listCampaigns()).slice(0, 5)) {
     for (const t of c.trials) if (t.model === model && t.durationMs) (times[t.tier] ??= []).push(t.durationMs / 60000);
   }
@@ -36,7 +42,7 @@ const measuredMinutes = async (model) => {
 };
 
 /** What a selection would play for each model: the same list and order as a campaign. */
-async function estimate({ models = [], categories, ids, budgetMinutes }) {
+async function estimate({ models = [], categories, ids, budgetMinutes = PROTOCOL.budgetMinutes }: Selection) {
   const { config } = await readSettings();
   const tasks = selectTasks({ categories, ids });
   const out = [];
@@ -49,9 +55,9 @@ async function estimate({ models = [], categories, ids, budgetMinutes }) {
   return { tasks: tasks.length, fullSuite: tasks.length === TASKS.length, models: out };
 }
 
-async function startCampaign({ models, categories, ids, budgetMinutes, reference }) {
+async function startCampaign({ models, categories, ids, budgetMinutes, reference }: Selection) {
   if ((await liveCampaigns()).length) throw new Error('Une campagne tourne déjà.');
-  const args = ['src/cli.js', 'run', '--budget', `${budgetMinutes}m`];
+  const args = ['src/cli.ts', 'run', '--budget', `${budgetMinutes}m`];
   if (models?.length) args.push('--models', models.join(','));
   if (categories?.length) args.push('--categories', categories.join(','));
   if (ids?.length) args.push('--tasks', ids.join(','));
@@ -65,7 +71,7 @@ async function startCampaign({ models, categories, ids, budgetMinutes, reference
 
 async function overview() {
   const live = await liveCampaigns();
-  const [models, issues, { config }] = await Promise.all([poneyModels(), machineIssues({ own: live.map((c) => c.enginePid) }), readSettings()]);
+  const [models, issues, { config }] = await Promise.all([poneyModels(), machineIssues({ own: live.flatMap((c) => c.enginePid ?? []) }), readSettings()]);
   const tasks = TASKS.map(({ id, category, tier, lang }) => ({ id, category, tier, lang }));
   return { models, issues, live, tasks, numCtx: config.numCtx, budgetMinutes: PROTOCOL.budgetMinutes };
 }
@@ -74,12 +80,23 @@ async function historyList() {
   return (await listCampaigns()).map((c) => ({ id: c.id, status: c.status, startedAt: c.startedAt, models: c.models.map((m) => m.id), fullSuite: c.fullSuite, trials: c.trials.length, poney: c.fingerprint.poney.commit?.slice(0, 7), machine: `${c.fingerprint.machine.chip} · ${c.fingerprint.machine.memoryGb} Go` }));
 }
 
-const ROUTES = {
+const campaignId = (url: URL) => {
+  const id = url.searchParams.get('id') ?? '';
+  if (!/^[\w-]+$/.test(id)) throw new Error('Campagne inconnue.');
+  return id;
+};
+
+const ROUTES: Record<string, (url: URL, body: Selection) => unknown> = {
   'GET /api/overview': () => overview(),
-  'GET /api/progress': async () => Promise.all((await liveCampaigns()).map(progressOf)),
+  'GET /api/progress': async () => Promise.all((await liveCampaigns()).map((c) => progressOf(c.id, c))),
+  'GET /api/campaign': async (url) => {
+    const id = campaignId(url);
+    return progressOf(id, (await liveCampaigns()).find((c) => c.id === id));
+  },
+  'GET /api/transcript': (url) => transcriptFor(campaignId(url), url.searchParams.get('model') ?? '', url.searchParams.get('key') ?? ''),
   'GET /api/history': () => historyList(),
-  'GET /api/report': (url) => campaignReport(url.searchParams.get('id')),
-  'GET /api/compare': async (url) => compare(await loadCampaign(url.searchParams.get('a')), await loadCampaign(url.searchParams.get('b'))),
+  'GET /api/report': (url) => campaignReport(campaignId(url)),
+  'GET /api/compare': async (url) => compare(await loadCampaign(url.searchParams.get('a') ?? ''), await loadCampaign(url.searchParams.get('b') ?? '')),
   'POST /api/estimate': (_, body) => estimate(body),
   'POST /api/run': (_, body) => startCampaign(body),
   'POST /api/unload': () => unloadOthers().then(() => ({ ok: true })),
@@ -89,7 +106,7 @@ const ROUTES = {
   },
 };
 
-export async function serve(port) {
+export async function serve(port: number) {
   const origin = `http://127.0.0.1:${port}`;
   const server = Bun.serve({
     port,
@@ -102,12 +119,13 @@ export async function serve(port) {
         const route = ROUTES[`${req.method} ${url.pathname}`];
         if (!route) return new Response('Not found', { status: 404 });
         try {
-          return Response.json(await route(url, req.method === 'POST' ? await req.json().catch(() => ({})) : null));
+          return Response.json(await route(url, req.method === 'POST' ? ((await req.json().catch(() => ({}))) as Selection) : {}));
         } catch (e) {
-          return Response.json({ error: e.message }, { status: 500 });
+          return Response.json({ error: message(e) }, { status: 500 });
         }
       }
       const name = url.pathname === '/' ? 'index.html' : path.basename(url.pathname);
+      if (name === 'app.js') return new Response(TRANSPILER.transformSync(await Bun.file(path.join(UI, 'app.ts')).text()), { headers: { 'content-type': TYPES['.js'] ?? 'text/javascript' } });
       const file = Bun.file(path.join(UI, name));
       if (!(await file.exists())) return new Response('Not found', { status: 404 });
       return new Response(file, { headers: { 'content-type': TYPES[path.extname(name)] ?? 'text/plain' } });

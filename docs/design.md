@@ -58,7 +58,7 @@ No average over everything: it would let a high ceiling hide a low floor.
 An elimination is final even if trials are missing: more trials cannot undo it. A pass needs every mandatory trial.
 
 **Ranking**: gate first, then success on complex tasks. Rates within 5 points are a tie, settled by the misuse rate
-of tools, then by the median time of a simple task.
+of tools, then by the median time of a simple task; times within 10 % are a tie, decided by the median first token.
 
 **What a failure is.** A timeout, a stopped engine (memory), a loop or the step limit are failures of the model. A
 bench or sandbox failure is replayed once, and never counted against the model. If another app takes the machine

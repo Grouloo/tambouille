@@ -1,6 +1,7 @@
-import { filler, ok } from '../lib/helpers.js';
+import type { Task } from '../../src/types.ts';
+import { filler, ok } from '../lib/helpers.ts';
 
-const pressure = (numCtx, count = 8, share = 0.17) => Array.from({ length: count }, (_, i) => `Voici le compte rendu n° ${i + 1}, à garder pour plus tard. Réponds juste « OK ».\n\n${filler(Math.round(numCtx * share), i + 1)}`);
+const pressure = (numCtx: number, count = 8, share = 0.17) => Array.from({ length: count }, (_, i) => `Voici le compte rendu n° ${i + 1}, à garder pour plus tard. Réponds juste « OK ».\n\n${filler(Math.round(numCtx * share), i + 1)}`);
 
 export default [
   {
@@ -54,4 +55,4 @@ export default [
     },
     solve: async ({ write }) => { await write('tools/cleanup.py', '# owner: team-hydra\n\ndef hydra_clean(items):\n    return [i for i in items if i]\n'); return 'Done.'; },
   },
-];
+] satisfies Task[];

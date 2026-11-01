@@ -1,6 +1,8 @@
-import { ok } from '../lib/helpers.js';
+import type { TaskContext } from '../../src/context.ts';
+import type { Task } from '../../src/types.ts';
+import { ok } from '../lib/helpers.ts';
 
-const base = async ({ write, git }) => {
+const base = async ({ write, git }: TaskContext) => {
   await git('init', '-q');
   await write('a.txt', 'one\n');
   await write('b.txt', 'two\n');
@@ -54,7 +56,7 @@ export default [
       await write('vendor/d.py', '# TODO not this\n');
       await write('notes.txt', 'TODO not this either\n');
     },
-    check: async ({ file }) => ok((await file('count.txt'))?.trim() === '3', await file('count.txt')),
+    check: async ({ file }) => ok((await file('count.txt'))?.trim() === '3', (await file('count.txt')) ?? undefined),
     solve: async ({ write }) => { await write('count.txt', '3\n'); return 'Done.'; },
   },
   {
@@ -101,4 +103,4 @@ export default [
     },
     solve: async ({ git }) => { await git('branch', 'rescue', 'HEAD@{1}'); return 'Recovered: add parser, add lexer.'; },
   },
-];
+] satisfies Task[];

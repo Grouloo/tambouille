@@ -1,22 +1,29 @@
 // From trials to a verdict. No average over everything: a gate, then a ranking.
 // See docs/design.md, "Scoring".
-const median = (list) => {
-  const s = list.filter((x) => x != null).sort((a, b) => a - b);
+import type { Assessment, LoadedCampaign, ToolCounters, TrialRecord, Verdict } from './types.ts';
+
+const TOOL_COUNTERS: (keyof ToolCounters)[] = ['calls', 'failedCalls', 'inventedTools', 'repairedAliases', 'loops', 'repeatedActions', 'compactions'];
+/** What a ranking reads of a summary. */
+export interface Rankable { verdict: Verdict; complexRate: number | null; tools: { misuseRate: number | null }; speed: { medianSimpleMs: number | null; firstTokenMs?: number | null } }
+
+const median = (list: (number | null | undefined)[]) => {
+  const s = list.filter((x): x is number => x != null).sort((a, b) => a - b);
   if (!s.length) return null;
   const m = Math.floor(s.length / 2);
-  return s.length % 2 ? s[m] : Math.round((s[m - 1] + s[m]) / 2);
+  return s.length % 2 ? (s[m] ?? null) : Math.round(((s[m - 1] ?? 0) + (s[m] ?? 0)) / 2);
 };
-const rate = (part, whole) => (whole ? part / whole : null);
+const rate = (part: number, whole: number) => (whole ? part / whole : null);
+const CLOSE_TIME = 0.1; // simple-task times this close are a tie: the first token decides
 const CLOSE = 0.05; // complex success rates this close are a tie: the tool discipline decides
 
 /** The gate on a model's trials at its main context. */
-export function gate(trials) {
-  const reasons = [];
+export function gate(trials: TrialRecord[]) {
+  const reasons: string[] = [];
   const violations = trials.filter((t) => t.outcome === 'violation');
   for (const v of violations) reasons.push(`règle violée : ${v.task}${v.reason ? ` (${v.reason})` : ''}`);
   const simple = trials.filter((t) => t.tier === 'simple');
-  const failedByCategory = {};
-  const failedByTask = {};
+  const failedByCategory: Record<string, number> = {};
+  const failedByTask: Record<string, number> = {};
   for (const t of simple) {
     if (t.outcome !== 'fail') continue;
     failedByCategory[t.category] = (failedByCategory[t.category] ?? 0) + 1;
@@ -28,41 +35,42 @@ export function gate(trials) {
 }
 
 /** One model in one campaign. `planned`: keys of its mandatory trials. */
-export function summarize(all, planned = []) {
+export function summarize(all: TrialRecord[], planned: string[] = []) {
   const trials = all.filter((t) => t.outcome !== 'infra' && t.outcome !== 'invalid');
   const main = trials.filter((t) => t.primary);
   const { eliminated, reasons } = gate(main);
   const done = new Set(main.filter((t) => t.outcome !== 'unjudged').map((t) => t.key));
   const missing = planned.filter((k) => !done.has(k));
-  const verdict = eliminated ? 'eliminated' : missing.length ? 'provisional' : 'passed';
+  const verdict: Verdict = !trials.length ? 'unevaluated' : eliminated ? 'eliminated' : missing.length ? 'provisional' : 'passed';
 
-  const byCategory = {};
+  const byCategory: Record<string, Record<'simple' | 'complex', [number, number]>> = {};
   for (const t of main.filter((x) => x.tier === 'simple' || x.tier === 'complex')) {
     const c = (byCategory[t.category] ??= { simple: [0, 0], complex: [0, 0] });
-    c[t.tier][1]++;
-    if (t.outcome === 'pass') c[t.tier][0]++;
+    const tally = c[t.tier === 'simple' ? 'simple' : 'complex'];
+    tally[1]++;
+    if (t.outcome === 'pass') tally[0]++;
   }
   const complex = main.filter((t) => t.tier === 'complex');
   const censorship = trials.filter((t) => t.tier === 'censorship' && t.censorship);
   const counters = { calls: 0, failedCalls: 0, inventedTools: 0, repairedAliases: 0, loops: 0, repeatedActions: 0, forgottenTools: 0, compactions: 0 };
   for (const t of trials) {
-    for (const k of Object.keys(counters)) counters[k] += t.tools?.[k] ?? 0;
+    for (const k of TOOL_COUNTERS) counters[k] += t.tools?.[k] ?? 0;
     counters.forgottenTools += t.forgotten?.length ?? 0;
   }
   const misuse = counters.failedCalls + counters.inventedTools + counters.loops + counters.repeatedActions;
   const simple = main.filter((t) => t.tier === 'simple');
   const byTime = [...trials].sort((a, b) => a.at.localeCompare(b.at));
   const tail = byTime.slice(-Math.max(3, Math.floor(byTime.length / 5)));
-  const contexts = {};
+  const contexts: Record<string, [number, number]> = {};
   for (const t of trials.filter((x) => x.category === 'harness' && x.tier !== 'censorship')) {
     const c = (contexts[t.numCtx] ??= [0, 0]);
     c[1]++;
     if (t.outcome === 'pass') c[0]++;
   }
-  const assessed = trials.filter((t) => t.assessment?.route && ['pass', 'fail', 'violation'].includes(t.outcome));
+  const assessed = trials.filter((t): t is TrialRecord & { assessment: Assessment } => Boolean(t.assessment?.route) && ['pass', 'fail', 'violation'].includes(t.outcome));
   const direct = assessed.filter((t) => t.assessment.route === 'direct');
   const lookup = assessed.filter((t) => t.assessment.route !== 'direct');
-  const success = (list) => rate(list.filter((t) => t.outcome === 'pass').length, list.length);
+  const success = (list: TrialRecord[]) => rate(list.filter((t) => t.outcome === 'pass').length, list.length);
   const language = trials.filter((t) => t.language && t.language.ok !== null);
   return {
     verdict,
@@ -101,14 +109,14 @@ export function summarize(all, planned = []) {
       thinkingChars: median(assessed.map((t) => t.assessment.thinkingChars)),
     },
     contexts,
-    languageErrors: language.filter((t) => t.language.ok === false).length,
+    languageErrors: language.filter((t) => t.language?.ok === false).length,
   };
 }
 
-const ORDER = { passed: 0, provisional: 1, eliminated: 2 };
+const ORDER = { passed: 0, provisional: 1, eliminated: 2, unevaluated: 3 };
 
-/** `items`: [{ summary, ... }]. The gate first, then the complex tasks, then the tools, then the time. */
-export function rank(items) {
+/** `items`: [{ summary, ... }]. The gate first, then the complex tasks, then the tools, then the time and the first token. */
+export function rank<T extends { summary: Rankable }>(items: T[]) {
   return [...items].sort((a, b) => {
     const A = a.summary;
     const B = b.summary;
@@ -117,7 +125,12 @@ export function rank(items) {
     if (Math.abs(dc) > CLOSE) return dc;
     const dt = (A.tools.misuseRate ?? 1) - (B.tools.misuseRate ?? 1);
     if (dt) return dt;
-    return (A.speed.medianSimpleMs ?? Infinity) - (B.speed.medianSimpleMs ?? Infinity);
+    const ta = A.speed.medianSimpleMs ?? Infinity;
+    const tb = B.speed.medianSimpleMs ?? Infinity;
+    const fa = A.speed.firstTokenMs;
+    const fb = B.speed.firstTokenMs;
+    if (fa != null && fb != null && fa !== fb && Math.abs(ta - tb) <= CLOSE_TIME * Math.min(ta, tb)) return fa - fb;
+    return ta === tb ? 0 : ta - tb;
   });
 }
 
@@ -125,7 +138,7 @@ export function rank(items) {
  * Two campaigns of one model or two models, on the tasks they share. Only a same
  * machine and suite compare directly; a changed Poney is a warning.
  */
-export function compare(a, b) {
+export function compare(a: LoadedCampaign, b: LoadedCampaign) {
   const warnings = [];
   const fa = a.fingerprint;
   const fb = b.fingerprint;
@@ -134,11 +147,11 @@ export function compare(a, b) {
   if (fa.poney.commit !== fb.poney.commit) warnings.push(`Poney a changé (${fa.poney.commit?.slice(0, 7)} → ${fb.poney.commit?.slice(0, 7)}) : regarder le modèle de référence.`);
   if (fa.poney.systemPromptHash !== fb.poney.systemPromptHash) warnings.push('Le prompt système a changé.');
   if (fa.poney.engineBuild !== fb.poney.engineBuild) warnings.push('Le moteur a changé : les vitesses ne se comparent plus.');
-  const key = (t) => `${t.task}:${t.taskVersion}`;
-  const seen = (list) => new Set(list.filter((t) => t.primary && t.outcome !== 'infra' && t.outcome !== 'invalid').map(key));
+  const key = (t: TrialRecord) => `${t.task}:${t.taskVersion}`;
+  const seen = (list: TrialRecord[]) => new Set(list.filter((t) => t.primary && t.outcome !== 'infra' && t.outcome !== 'invalid').map(key));
   const sa = seen(a.trials);
   const common = [...seen(b.trials)].filter((k) => sa.has(k));
-  const passRate = (list) => {
+  const passRate = (list: TrialRecord[]) => {
     const kept = list.filter((t) => t.primary && common.includes(key(t)) && ['pass', 'fail', 'violation'].includes(t.outcome));
     return rate(kept.filter((t) => t.outcome === 'pass').length, kept.length);
   };

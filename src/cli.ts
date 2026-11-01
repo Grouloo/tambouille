@@ -1,33 +1,42 @@
 #!/usr/bin/env bun
 // bun src/cli.js <command>. See README.md.
-import { campaignReport, prepare, rejudge, runCampaign } from './campaign.js';
-import { PROTOCOL } from './config.js';
-import { machineIssues, unloadOthers } from './machine.js';
-import { planTrials, fitBudget } from './plan.js';
-import { poneyModels } from './poney.js';
-import { canary } from './sandbox.js';
-import { compare } from './score.js';
-import { listCampaigns, loadCampaign } from './store.js';
-import { selectTasks } from '../suite/index.js';
+import { campaignReport, prepare, rejudge, runCampaign } from './campaign.ts';
+import { PROTOCOL } from './config.ts';
+import { machineIssues, unloadOthers } from './machine.ts';
+import { planTrials, fitBudget } from './plan.ts';
+import { poneyModels } from './poney.ts';
+import { canary } from './sandbox.ts';
+import { compare } from './score.ts';
+import { listCampaigns, loadCampaign } from './store.ts';
+import { message } from './types.ts';
+import type { Campaign, LoadedCampaign } from './types.ts';
+import { selectTasks } from '../suite/index.ts';
 
 const argv = process.argv.slice(2);
 const command = argv.shift();
-const opts = {};
-const words = [];
+const opts: Record<string, string | true> = {};
+const words: string[] = [];
 for (let i = 0; i < argv.length; i++) {
-  if (!argv[i].startsWith('--')) { words.push(argv[i]); continue; }
-  const key = argv[i].slice(2);
-  if (argv[i + 1] === undefined || argv[i + 1].startsWith('--')) opts[key] = true;
-  else opts[key] = argv[++i];
+  const word = argv[i] ?? '';
+  if (!word.startsWith('--')) { words.push(word); continue; }
+  const key = word.slice(2);
+  const value = argv[i + 1];
+  if (value === undefined || value.startsWith('--')) opts[key] = true;
+  else { opts[key] = value; i++; }
 }
-const list = (v) => (typeof v === 'string' ? v.split(',').filter(Boolean) : undefined);
-const minutes = (v) => {
+const list = (v?: string | true) => (typeof v === 'string' ? v.split(',').filter(Boolean) : undefined);
+const minutes = (v?: string | true) => {
   if (v === undefined) return undefined;
   const m = String(v).match(/^(?:(\d+)h)?(?:(\d+)m?)?$/);
   if (!m || (!m[1] && !m[2])) throw new Error(`--budget : ${v} (ex. 90m, 1h, 2h30)`);
   return Number(m[1] ?? 0) * 60 + Number(m[2] ?? 0);
 };
-const percent = (x) => (x == null ? '—' : `${Math.round(x * 100)} %`);
+const percent = (x: number | null | undefined) => (x == null ? '—' : `${Math.round(x * 100)} %`);
+
+const needed = (id?: string) => {
+  if (!id) throw new Error('il manque un identifiant de campagne');
+  return id;
+};
 
 function usage() {
   console.log(`Usage: bun src/cli.js <command>
@@ -45,7 +54,7 @@ function usage() {
 Selection: --models a,b  --categories code,terminal  --tasks id,id  --budget 1h30  --reference`);
 }
 
-async function report(id) {
+async function report(id?: string) {
   const target = id ?? (await listCampaigns())[0]?.id;
   if (!target) return console.log('Aucune campagne.');
   const { campaign, ranking } = await campaignReport(target);
@@ -90,21 +99,21 @@ try {
       break;
     }
     case 'resume':
-      await execute(await loadCampaign(words[0]));
+      await execute(await loadCampaign(needed(words[0])));
       break;
     case 'rejudge':
-      await rejudge(words[0]);
+      await rejudge(needed(words[0]));
       break;
     case 'report':
       await report(words[0]);
       break;
     case 'compare': {
-      const c = compare(await loadCampaign(words[0]), await loadCampaign(words[1]));
+      const c = compare(await loadCampaign(needed(words[0])), await loadCampaign(needed(words[1])));
       console.log(c);
       break;
     }
     case 'serve': {
-      const { serve } = await import('./server.js');
+      const { serve } = await import('./server.ts');
       await serve(Number(opts.port) || 4177);
       break;
     }
@@ -113,12 +122,12 @@ try {
       if (command) process.exitCode = 1;
   }
 } catch (e) {
-  console.error(`Erreur : ${e.message}`);
+  console.error(`Erreur : ${message(e)}`);
   process.exitCode = 1;
 }
 
-async function execute(campaign) {
-  const { trials: _, probes: __, ...saved } = campaign;
+async function execute(campaign: Campaign | LoadedCampaign) {
+  const { trials: _, probes: __, ...saved } = campaign as LoadedCampaign;
   const stop = new AbortController();
   process.on('SIGTERM', () => stop.abort());
   process.on('SIGINT', () => stop.abort());
