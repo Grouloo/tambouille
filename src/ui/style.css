@@ -76,7 +76,7 @@ select { font: inherit; padding: 4px; max-width: 320px; }
 svg text { fill: var(--text-2); font-size: 12px; }
 svg .label { fill: var(--text); }
 .live-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 8px; }
-.live-head h2 { margin: 0; }
+.live-head h2 { margin: 0 auto 0 0; }
 .live-model { padding: 10px 0; border-top: 1px solid var(--border); }
 .live-model .progress { margin: 6px 0; }
 .activity { margin: 10px 0; padding: 10px 12px; border-radius: 8px; background: var(--surface-2); overflow-wrap: anywhere; }
@@ -126,6 +126,8 @@ button.small { padding: 2px 7px; font-size: 12px; }
 .entry pre { margin: 6px 0 0; padding: 8px; max-height: 320px; overflow: auto; border-radius: 6px; background: var(--surface-2); color: var(--text); font: 12px/1.45 ui-monospace, Menlo, monospace; white-space: pre-wrap; }
 .rename { width: 100%; padding: 5px 8px; border: 1px solid var(--accent); border-radius: 6px; background: var(--surface); color: var(--text); font: inherit; }
 button.with-icon { display: inline-flex; align-items: center; gap: 6px; }
+.live-head .danger { color: var(--bad); }
+.spinner.small { width: 13px; height: 13px; border-width: 2px; }
 button.plain:disabled { opacity: .5; cursor: not-allowed; }
 #tooltip { box-shadow: var(--shadow); position: fixed; pointer-events: none; background: var(--surface); border: 1px solid var(--border); border-radius: 7px; padding: 6px 10px; font-size: 13px; box-shadow: 0 2px 8px #0002; }
 #tooltip strong { display: block; }

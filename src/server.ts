@@ -10,7 +10,7 @@ import { fitBudget, planTrials } from './plan.ts';
 import { poneyModels, readSettings } from './poney.ts';
 import { progressOf, transcriptFor } from './progress.ts';
 import { compare } from './score.ts';
-import { listCampaigns, loadCampaign, renameCampaign } from './store.ts';
+import { deleteCampaign, listCampaigns, loadCampaign, renameCampaign } from './store.ts';
 import { message } from './types.ts';
 import type { Measured } from './plan.ts';
 import type { LiveCampaign, Tier } from './types.ts';
@@ -107,6 +107,12 @@ const ROUTES: Record<string, (url: URL, body: Selection) => unknown> = {
   'POST /api/resume': (_, body) => {
     const id = knownId(body.id);
     return launch(['resume', id]);
+  },
+  'POST /api/delete': async (_, body) => {
+    const id = knownId(body.id);
+    if ((await liveCampaigns()).some((c) => c.id === id)) throw new Error('Mettez d’abord la campagne en pause.');
+    await deleteCampaign(id);
+    return { ok: true };
   },
   'POST /api/rename': async (_, body) => {
     await renameCampaign(knownId(body.id), body.name ?? '');

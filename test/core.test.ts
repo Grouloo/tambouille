@@ -247,6 +247,7 @@ test('the time left follows the trials played, within the budget', async () => {
   expect(modelState(base)).toEqual({ state: 'running', remainingMs: 180000 });
   expect(modelState({ ...base, budgetMinutes: 2 }).remainingMs).toBe(60000);
   expect(modelState({ ...base, started: false }).state).toBe('waiting');
+  expect(modelState({ ...base, rows: [], total: 0 }).state).toBe('running');
   expect(modelState({ ...base, index: 0, lastStarted: 1 }).state).toBe('done');
   expect(modelState({ ...base, live: false }).state).toBe('interrupted');
 });

@@ -110,7 +110,7 @@ export function modelState({ started, index, lastStarted, rows, total, budgetMin
   const played = rows.filter((r) => r.state !== 'pending' && r.state !== 'running');
   const left = Math.max(total - played.length, 0);
   let state: 'waiting' | 'running' | 'done' | 'interrupted';
-  if (live) state = !started ? 'waiting' : left === 0 || index < lastStarted ? 'done' : 'running';
+  if (live) state = !started ? 'waiting' : index < lastStarted || (total > 0 && left === 0) ? 'done' : 'running'; // (no total yet: it is being probed)
   else state = finished || left === 0 ? 'done' : 'interrupted';
   if (state !== 'running' && state !== 'waiting') return { state, remainingMs: null };
   const spent = played.reduce((sum, r) => sum + (r.durationMs ?? 0), 0);

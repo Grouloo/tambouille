@@ -52,6 +52,12 @@ export async function renameCampaign(id: string, name: string) {
   else await fs.rm(file, { force: true });
 }
 
+/** Removes its results and everything kept for it in .data. For good. */
+export async function deleteCampaign(id: string) {
+  await loadCampaign(id);
+  await Promise.all([dir(id), ...['transcripts', 'pending', 'run'].map((d) => path.join(DATA, d, id))].map((p) => fs.rm(p, { recursive: true, force: true })));
+}
+
 export async function listCampaigns() {
   const names = await fs.readdir(RESULTS).catch(() => []);
   const list: LoadedCampaign[] = [];
